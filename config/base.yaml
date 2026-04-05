@@ -1,0 +1,143 @@
+project_name: "Tricorder Neural Platform"
+version: "1.0.0"
+environment: "development"
+
+sensors:
+  i2c_devices:
+    bme680:
+      address: 118  # 0x76
+      bus: 1
+      enabled: true
+      poll_rate_hz: 1.0
+      timeout_ms: 1000
+    mlx90640:
+      address: 51  # 0x33
+      bus: 1
+      enabled: true
+      poll_rate_hz: 4.0
+      timeout_ms: 2000
+    as7265x:
+      address: 73  # 0x49
+      bus: 1
+      enabled: true
+      poll_rate_hz: 2.0
+      timeout_ms: 1500
+    max30102:
+      address: 87  # 0x57
+      bus: 1
+      enabled: true
+      poll_rate_hz: 25.0
+      timeout_ms: 500
+
+  spi_devices:
+    ads1263:
+      bus: 0
+      device: 0
+      max_speed_hz: 1000000
+      mode: 1
+      bits_per_word: 8
+      cs_gpio: 8
+      drdy_gpio: 17
+      reset_gpio: 27
+      enabled: true
+
+  uart_devices:
+    hlk_ld2410:
+      port: "/dev/ttyAMA0"
+      baud_rate: 115200
+      timeout_s: 1.0
+      enabled: true
+    tfmini_s:
+      port: "/dev/ttyUSB0"
+      baud_rate: 115200
+      timeout_s: 1.0
+      enabled: true
+
+  adc_channels:
+    gas_mq2:
+      positive_input: 0
+      negative_input: 1
+      label: "MQ-2 Smoke/LPG"
+      gain: 1
+      data_rate: 20
+    gas_mq7:
+      positive_input: 2
+      negative_input: 3
+      label: "MQ-7 CO"
+      gain: 1
+      data_rate: 20
+    gas_mq135:
+      positive_input: 4
+      negative_input: 5
+      label: "MQ-135 Air Quality"
+      gain: 1
+      data_rate: 20
+    thermocouple:
+      positive_input: 6
+      negative_input: 7
+      label: "K-type Thermocouple"
+      gain: 4
+      data_rate: 20
+    gsr:
+      positive_input: 8
+      negative_input: 9
+      label: "Galvanic Skin Response"
+      gain: 8
+      data_rate: 20
+
+models:
+  anomaly_detector:
+    model_path: "models/onnx/anomaly_lstm.onnx"
+    input_shape: [1, 256, 10]
+    output_shape: [1, 10]
+    quantization: "int8"
+    hailo_hef_path: "models/hailo/anomaly_lstm.hef"
+    batch_size: 1
+    confidence_threshold: 0.75
+    window_size: 256
+  fusion_transformer:
+    model_path: "models/onnx/fusion_transformer.onnx"
+    input_shape: [1, 16, 64]
+    output_shape: [1, 512]
+    quantization: "int8"
+    hailo_hef_path: "models/hailo/fusion_transformer.hef"
+    batch_size: 1
+    confidence_threshold: 0.80
+    window_size: 16
+
+mcp_server:
+  host: "127.0.0.1"
+  port: 8000
+  transport: "http"
+  auth_enabled: false
+  max_concurrent_tools: 10
+
+agent:
+  llm_endpoint: "http://localhost:11434"
+  model_name: "qwen2.5:3b"
+  temperature: 0.1
+  max_tokens: 512
+  checkpoint_db_path: "data/agent_checkpoints.db"
+  mission_mode: "patrol"
+  human_in_loop_threshold: "HIGH"
+
+rag:
+  db_path: "data/hazard_vectordb"
+  embedding_model: "nomic-embed-text"
+  collection_name: "hazard_references"
+  top_k: 5
+  similarity_threshold: 0.7
+
+mqtt:
+  host: "localhost"
+  port: 1883
+  topic_prefix: "tricorder"
+  keepalive_s: 60
+  enabled: true
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/tricorder.log"
+  max_bytes: 10485760
+  backup_count: 5

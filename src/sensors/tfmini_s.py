@@ -1,0 +1,116 @@
+"""TFmini-S LiDAR time-of-flight distance sensor driver (UART)."""
+
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+import struct
+import logging
+
+from sensors.base import (
+    BaseSensor, SensorReading, SensorStatus,
+    SensorInitializationError, SensorCommunicationError, SensorFactory,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class TFMiniSSensor(BaseSensor):
+    """
+    TFmini-S LiDAR Time-of-Flight ranging sensor.
+
+    Communicates via UART. Outputs 9-byte data frames at configurable rate.
+    """
+
+    FRAME_HEADER = 0x59
+    FRAME_LENGTH = 9
+
+    def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
+        super().__init__(sensor_id, adapter, config)
+        self.port = config.get("port", "/dev/ttyUSB0")
+        self.baud_rate = config.get("baud_rate", 115200)
+        self.max_range_cm = config.get("max_range_cm", 1200)
+        self.min_range_cm = config.get("min_range_cm", 10)
+
+    def _parse_frame(self, data: bytes) -> Optional[Dict[str, Any]]:
+        """Parse a TFmini-S 9-byte data frame."""
+        if len(data) < self.FRAME_LENGTH:
+            return None
+
+        # Find double-header 0x59 0x59
+        for i in range(len(data) - self.FRAME_LENGTH + 1):
+            if data[i] == self.FRAME_HEADER and data[i + 1] == self.FRAME_HEADER:
+                frame = data[i:i + self.FRAME_LENGTH]
+
+                # Verify checksum
+                checksum = sum(frame[:8]) & 0xFF
+                if checksum != frame[8]:
+                    continue
+
+                distance_cm = struct.unpack_from('<H', frame, 2)[0]
+                strength = struct.unpack_from('<H', frame, 4)[0]
+                temperature_raw = struct.unpack_from('<H', frame, 6)[0]
+                temperature_c = temperature_raw / 8.0 - 256.0
+
+                return {
+                    "distance_cm": distance_cm,
+                    "signal_strength": strength,
+                    "temperature_c": round(temperature_c, 1),
+                    "valid": self.min_range_cm <= distance_cm <= self.max_range_cm,
+                }
+        return None
+
+    def initialize(self) -> bool:
+        try:
+            # Send version query command
+            version_cmd = bytes([0x5A, 0x04, 0x01, 0x5F])
+            self.adapter.write(version_cmd)
+            self.adapter.flush()
+            response = self.adapter.read(32)
+
+            if not response:
+                logger.warning("%s no version response, continuing anyway", self.sensor_id)
+
+            # Set output mode to standard (9-byte frames)
+            output_cmd = bytes([0x5A, 0x05, 0x05, 0x01, 0x65])
+            self.adapter.write(output_cmd)
+            self.adapter.flush()
+
+            self.status = SensorStatus.READY
+            logger.info("%s initialized", self.sensor_id)
+            return True
+        except Exception as e:
+            self._record_error(e)
+            raise SensorInitializationError(f"TFmini-S init failed: {e}") from e
+
+    def read(self) -> SensorReading:
+        try:
+            self.status = SensorStatus.READING
+
+            raw_data = self.adapter.read(self.FRAME_LENGTH * 3)
+            if not raw_data:
+                raise SensorCommunicationError("No data from TFmini-S")
+
+            parsed = self._parse_frame(raw_data)
+            if parsed is None:
+                raise SensorCommunicationError("Invalid frame from TFmini-S")
+
+            confidence = 0.95 if parsed["valid"] else 0.3
+
+            reading = SensorReading(
+                sensor_id=self.sensor_id,
+                timestamp=datetime.now(timezone.utc),
+                value=parsed,
+                unit="cm",
+                confidence=confidence,
+                metadata={"port": self.port},
+            )
+            self._record_reading(reading)
+            return reading
+        except SensorCommunicationError:
+            self._record_error(SensorCommunicationError("read failed"))
+            raise
+        except Exception as e:
+            self._record_error(e)
+            raise SensorCommunicationError(f"TFmini-S read failed: {e}") from e
+
+
+SensorFactory.register("tfmini_s", TFMiniSSensor)

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/*.log
+*.log
+
+# Data
+data/baseline/*.npy
+data/calibration/*.json
+models/weights/*.pth
+models/hailo/*.hef
+
+# Config overrides
+config/local.yaml
+.env
+
+# Hardware-specific
+*.hef

@@ -1,0 +1,183 @@
+"""Unit tests for MCP server."""
+
+import pytest
+from unittest.mock import Mock, AsyncMock
+
+from fastapi.testclient import TestClient
+
+from mcp_server.server import create_app, ToolRegistry, Tool, ToolCallRequest
+
+
+@pytest.fixture
+def test_registry():
+    registry = ToolRegistry()
+
+    @registry.register(
+        name="test_tool",
+        description="A test tool",
+        input_schema={"type": "object", "properties": {"x": {"type": "integer"}}},
+    )
+    def test_tool(x: int = 0):
+        return {"result": x * 2}
+
+    @registry.register(
+        name="error_tool",
+        description="A tool that fails",
+        input_schema={"type": "object", "properties": {}},
+    )
+    def error_tool():
+        raise RuntimeError("Intentional failure")
+
+    return registry
+
+
+@pytest.fixture
+def test_client(test_registry):
+    app = create_app(config={}, registry=test_registry)
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth_client():
+    registry = ToolRegistry()
+
+    @registry.register("auth_tool", "Needs auth", {"type": "object", "properties": {}})
+    def auth_tool():
+        return {"secret": "data"}
+
+    app = create_app(
+        config={"auth_enabled": True, "api_key": "test-key-123"},
+        registry=registry,
+    )
+    return TestClient(app)
+
+
+class TestHealthEndpoint:
+    def test_health(self, test_client):
+        resp = test_client.get("/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "healthy"
+        assert "timestamp" in data
+        assert data["tools_registered"] == 2
+
+
+class TestToolsEndpoint:
+    def test_list_tools(self, test_client):
+        resp = test_client.get("/tools")
+        assert resp.status_code == 200
+        tools = resp.json()
+        assert len(tools) == 2
+        names = [t["name"] for t in tools]
+        assert "test_tool" in names
+        assert "error_tool" in names
+
+    def test_tool_schema(self, test_client):
+        resp = test_client.get("/tools")
+        tools = resp.json()
+        test_tool = [t for t in tools if t["name"] == "test_tool"][0]
+        assert "inputSchema" in test_tool
+        assert "description" in test_tool
+
+
+class TestToolCallEndpoint:
+    def test_call_success(self, test_client):
+        resp = test_client.post("/tools/call", json={
+            "name": "test_tool",
+            "arguments": {"x": 5},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["isError"] is False
+        assert data["content"]["result"] == 10
+
+    def test_call_unknown_tool(self, test_client):
+        resp = test_client.post("/tools/call", json={
+            "name": "nonexistent",
+            "arguments": {},
+        })
+        assert resp.status_code == 404
+
+    def test_call_error_tool(self, test_client):
+        resp = test_client.post("/tools/call", json={
+            "name": "error_tool",
+            "arguments": {},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["isError"] is True
+
+    def test_call_default_args(self, test_client):
+        resp = test_client.post("/tools/call", json={
+            "name": "test_tool",
+            "arguments": {},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"]["result"] == 0
+
+
+class TestToolRegistry:
+    def test_register_decorator(self):
+        registry = ToolRegistry()
+
+        @registry.register("my_tool", "desc", {"type": "object"})
+        def my_func():
+            return 42
+
+        assert registry.has_tool("my_tool")
+        assert registry.tool_count == 1
+
+    def test_register_function(self):
+        registry = ToolRegistry()
+        registry.register_function("fn_tool", "desc", {"type": "object"}, lambda: 99)
+        assert registry.has_tool("fn_tool")
+
+    def test_list_tools(self):
+        registry = ToolRegistry()
+        registry.register_function("a", "desc a", {}, lambda: 1)
+        registry.register_function("b", "desc b", {}, lambda: 2)
+        tools = registry.list_tools()
+        assert len(tools) == 2
+
+    @pytest.mark.asyncio
+    async def test_call_sync(self):
+        registry = ToolRegistry()
+        registry.register_function("sync_tool", "sync", {}, lambda: "ok")
+        result = await registry.call("sync_tool", {})
+        assert result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_call_async(self):
+        registry = ToolRegistry()
+
+        async def async_func():
+            return "async_ok"
+
+        registry.register_function("async_tool", "async", {}, async_func)
+        result = await registry.call("async_tool", {})
+        assert result == "async_ok"
+
+    @pytest.mark.asyncio
+    async def test_call_unknown(self):
+        registry = ToolRegistry()
+        with pytest.raises(KeyError):
+            await registry.call("nope", {})
+
+
+class TestAuthMiddleware:
+    def test_health_no_auth_required(self, auth_client):
+        resp = auth_client.get("/health")
+        assert resp.status_code == 200
+
+    def test_tools_requires_auth(self, auth_client):
+        resp = auth_client.get("/tools")
+        assert resp.status_code == 401
+
+    def test_tools_with_valid_auth(self, auth_client):
+        resp = auth_client.get("/tools", headers={"Authorization": "Bearer test-key-123"})
+        assert resp.status_code == 200
+
+    def test_tools_with_invalid_auth(self, auth_client):
+        resp = auth_client.get("/tools", headers={"Authorization": "Bearer wrong-key"})
+        assert resp.status_code == 401
