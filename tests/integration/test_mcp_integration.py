@@ -1,14 +1,11 @@
 """Integration tests for MCP server with sensor manager."""
 
 import pytest
-from unittest.mock import Mock
-from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
 from mcp_server.server import create_app, ToolRegistry
 from mcp_server.tools.sensor_tools import register_sensor_tools
-from sensors.base import SensorReading, SensorStatus
 from sensors.manager import SensorManager
 
 

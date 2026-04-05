@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import numpy as np
 
 from models.base import (
-    ModelStatus, ModelResult, BaseModel, ModelRegistry,
+    ModelStatus, ModelResult, ModelRegistry,
     ModelError, ModelLoadError, ModelInferenceError,
 )
 from models.anomaly_detector import AnomalyDetector
@@ -145,6 +145,69 @@ class TestFusionEngine:
         model.load()
         with pytest.raises(ModelInferenceError, match="No sensor embeddings"):
             model.fuse_sensor_readings({})
+
+    def test_predict_reshapable(self, mock_inference_adapter, fusion_model_config):
+        """Input with correct total elements but wrong shape gets reshaped."""
+        model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)
+        model.load()
+        # Total elements = 1*16*64 = 1024, but flat
+        input_data = np.random.randn(1024).astype(np.float32)
+        result = model.predict(input_data)
+        assert "scene_embedding" in result.output
+
+    def test_predict_unexpected_error(self, mock_inference_adapter, fusion_model_config):
+        """Non-inference error during predict is wrapped in ModelInferenceError."""
+        model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)
+        model.load()
+        mock_inference_adapter.predict.side_effect = RuntimeError("NPU crash")
+        input_data = np.random.randn(1, 16, 64).astype(np.float32)
+        with pytest.raises(ModelInferenceError, match="Fusion failed"):
+            model.predict(input_data)
+
+    def test_fuse_1d_embeddings(self, mock_inference_adapter, fusion_model_config):
+        """1D embeddings are reshaped to 2D before concatenation."""
+        model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)
+        model.load()
+        embeddings = {
+            "sensor_a": np.random.randn(64).astype(np.float32),
+            "sensor_b": np.random.randn(64).astype(np.float32),
+        }
+        result = model.fuse_sensor_readings(embeddings)
+        assert "scene_embedding" in result.output
+
+    def test_fuse_unequal_dim_embeddings(self, mock_inference_adapter, fusion_model_config):
+        """Embeddings with different dimensions are padded to the largest."""
+        model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)
+        model.load()
+        embeddings = {
+            "sensor_a": np.random.randn(1, 32).astype(np.float32),
+            "sensor_b": np.random.randn(1, 64).astype(np.float32),
+        }
+        result = model.fuse_sensor_readings(embeddings)
+        assert "scene_embedding" in result.output
+
+    def test_fuse_too_many_tokens(self, mock_inference_adapter, fusion_model_config):
+        """More tokens than expected are truncated."""
+        model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)
+        model.load()
+        # 20 sensors > expected 16 tokens
+        embeddings = {
+            f"sensor_{i}": np.random.randn(1, 64).astype(np.float32)
+            for i in range(20)
+        }
+        result = model.fuse_sensor_readings(embeddings)
+        assert "scene_embedding" in result.output
+
+    def test_fuse_wide_embeddings_truncated(self, mock_inference_adapter, fusion_model_config):
+        """Embeddings wider than expected dim are truncated."""
+        model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)
+        model.load()
+        # dim=128 > expected 64
+        embeddings = {
+            "sensor_a": np.random.randn(1, 128).astype(np.float32),
+        }
+        result = model.fuse_sensor_readings(embeddings)
+        assert "scene_embedding" in result.output
 
     def test_get_info(self, mock_inference_adapter, fusion_model_config):
         model = FusionEngine("fusion_01", mock_inference_adapter, fusion_model_config)

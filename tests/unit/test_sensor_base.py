@@ -9,7 +9,7 @@ import numpy as np
 from sensors.base import (
     SensorReading, SensorStatus, BaseSensor, SensorFactory,
     SensorError, SensorInitializationError, SensorCommunicationError,
-    SensorCalibrationError, I2CAdapter, SPIAdapter, UARTAdapter,
+    SensorCalibrationError,
 )
 
 

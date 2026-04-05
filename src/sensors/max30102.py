@@ -33,6 +33,16 @@ class MAX30102Sensor(BaseSensor):
         "int_status1": 0x00,
     }
     DEFAULT_EXPECTED_PART_ID = 0x15
+    DEFAULT_DEVICE_CONFIG = {
+        "reset_value": 0x40,
+        "spo2_mode": 0x03,         # Red + IR LEDs
+        "spo2_config": 0x27,       # 4096 ADC range, 100 SPS, 18-bit
+        "fifo_sample_avg": 0x40,   # Sample averaging = 4
+    }
+    DEFAULT_SPO2_CALIBRATION = {
+        "intercept": 110,
+        "slope": 25,
+    }
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -43,6 +53,8 @@ class MAX30102Sensor(BaseSensor):
         )
         self.led_amplitude = config.get("led_amplitude", 0x24)  # ~7mA
         self.sample_rate = config.get("sample_rate", 100)
+        self.device_config = config.get("device_config", self.DEFAULT_DEVICE_CONFIG)
+        self.spo2_calibration = config.get("spo2_calibration", self.DEFAULT_SPO2_CALIBRATION)
 
     def initialize(self) -> bool:
         try:
@@ -57,15 +69,18 @@ class MAX30102Sensor(BaseSensor):
 
             # Reset device
             self.adapter.write_byte_data(
-                self.address, self.registers["mode_config"], 0x40
+                self.address, self.registers["mode_config"],
+                self.device_config["reset_value"],
             )
             # SpO2 mode (red + IR)
             self.adapter.write_byte_data(
-                self.address, self.registers["mode_config"], 0x03
+                self.address, self.registers["mode_config"],
+                self.device_config["spo2_mode"],
             )
-            # SpO2 config: 4096 ADC range, 100 SPS, 18-bit resolution
+            # SpO2 config: ADC range, sample rate, resolution
             self.adapter.write_byte_data(
-                self.address, self.registers["spo2_config"], 0x27
+                self.address, self.registers["spo2_config"],
+                self.device_config["spo2_config"],
             )
             # LED amplitudes
             self.adapter.write_byte_data(
@@ -74,9 +89,10 @@ class MAX30102Sensor(BaseSensor):
             self.adapter.write_byte_data(
                 self.address, self.registers["led2_pulse_amp"], self.led_amplitude
             )
-            # FIFO config: sample averaging = 4
+            # FIFO config: sample averaging
             self.adapter.write_byte_data(
-                self.address, self.registers["fifo_config"], 0x40
+                self.address, self.registers["fifo_config"],
+                self.device_config["fifo_sample_avg"],
             )
 
             self.status = SensorStatus.READY
@@ -121,7 +137,8 @@ class MAX30102Sensor(BaseSensor):
             avg_red = sum(red_values) / max(len(red_values), 1)
             avg_ir = sum(ir_values) / max(len(ir_values), 1)
             ratio = avg_red / max(avg_ir, 1)
-            spo2_estimate = max(0, min(100, 110 - 25 * ratio))
+            spo2_cal = self.spo2_calibration
+            spo2_estimate = max(0, min(100, spo2_cal["intercept"] - spo2_cal["slope"] * ratio))
             hr_estimate = max(40, min(200, len(red_values) * 60 / max(num_samples, 1)))
 
             reading = SensorReading(

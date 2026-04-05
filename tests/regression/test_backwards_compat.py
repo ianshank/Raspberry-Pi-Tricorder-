@@ -1,17 +1,14 @@
 """Regression tests ensuring backwards compatibility."""
 
 import pytest
-from unittest.mock import Mock
 from datetime import datetime, timezone
 
 from sensors.base import (
     SensorReading, SensorStatus, BaseSensor, SensorFactory,
     SensorError, SensorInitializationError, SensorCommunicationError,
-    I2CAdapter, SPIAdapter, UARTAdapter,
 )
 from utils.config import (
-    TricorderConfig, I2CDeviceConfig, SPIDeviceConfig, UARTDeviceConfig,
-    SensorConfig, MCPServerConfig, LoggingConfig,
+    TricorderConfig, I2CDeviceConfig, MCPServerConfig,
 )
 from models.base import ModelResult, ModelStatus, ModelRegistry
 from mcp_server.server import ToolRegistry, Tool

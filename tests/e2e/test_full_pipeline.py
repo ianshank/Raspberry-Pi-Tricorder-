@@ -1,17 +1,14 @@
 """End-to-end tests for the full Tricorder pipeline."""
 
 import pytest
-from unittest.mock import Mock
-from pathlib import Path
 
 import numpy as np
 
-from utils.config import load_config, TricorderConfig
+from utils.config import load_config
 from sensors.manager import SensorManager
-from sensors.base import SensorFactory
 from models.base import ModelRegistry
 from models.anomaly_detector import AnomalyDetector
-from mcp_server.server import create_app, ToolRegistry
+from mcp_server.server import ToolRegistry
 from mcp_server.tools.sensor_tools import register_sensor_tools
 from mcp_server.tools.anomaly_tools import register_anomaly_tools
 from agents.langgraph_agent import TricorderAgent

@@ -38,6 +38,8 @@ class AS7265xSensor(BaseSensor):
         730, 760, 810, 860, 900, 940,  # NIR
     ]
 
+    DEFAULT_INTEGRATION_TIME = 50  # ~50ms integration time
+
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
         self.address = config.get("address", 0x49)
@@ -49,11 +51,12 @@ class AS7265xSensor(BaseSensor):
         self.wavelengths = config.get(
             "wavelengths_nm", self.CHANNEL_WAVELENGTHS_NM
         )
+        self.integration_time = config.get("integration_time", self.DEFAULT_INTEGRATION_TIME)
 
     def _virtual_read(self, virtual_reg: int) -> int:
         """Read from virtual register via status/write/read interface."""
-        # Wait for ready
-        status = self.adapter.read_byte_data(
+        # Poll status register to wait for ready
+        self.adapter.read_byte_data(
             self.address, self.registers["status_reg"]
         )
         # Write virtual register address
@@ -80,7 +83,8 @@ class AS7265xSensor(BaseSensor):
                 self.registers["integration_time"]
             )
             self.adapter.write_byte_data(
-                self.address, self.registers["write_reg"], 50  # ~50ms integration
+                self.address, self.registers["write_reg"],
+                self.integration_time,
             )
 
             self.status = SensorStatus.READY

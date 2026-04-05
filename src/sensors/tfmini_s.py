@@ -22,6 +22,14 @@ class TFMiniSSensor(BaseSensor):
 
     FRAME_HEADER = 0x59
     FRAME_LENGTH = 9
+    DEFAULT_COMMANDS = {
+        "version_query": bytes([0x5A, 0x04, 0x01, 0x5F]),
+        "output_standard": bytes([0x5A, 0x05, 0x05, 0x01, 0x65]),
+    }
+    DEFAULT_TEMP_CONVERSION = {
+        "divisor": 8.0,
+        "offset": 256.0,
+    }
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -29,6 +37,8 @@ class TFMiniSSensor(BaseSensor):
         self.baud_rate = config.get("baud_rate", 115200)
         self.max_range_cm = config.get("max_range_cm", 1200)
         self.min_range_cm = config.get("min_range_cm", 10)
+        self.commands = config.get("commands", self.DEFAULT_COMMANDS)
+        self.temp_conversion = config.get("temp_conversion", self.DEFAULT_TEMP_CONVERSION)
 
     def _parse_frame(self, data: bytes) -> Optional[Dict[str, Any]]:
         """Parse a TFmini-S 9-byte data frame."""
@@ -48,7 +58,8 @@ class TFMiniSSensor(BaseSensor):
                 distance_cm = struct.unpack_from('<H', frame, 2)[0]
                 strength = struct.unpack_from('<H', frame, 4)[0]
                 temperature_raw = struct.unpack_from('<H', frame, 6)[0]
-                temperature_c = temperature_raw / 8.0 - 256.0
+                temperature_c = (temperature_raw / self.temp_conversion["divisor"]
+                                 - self.temp_conversion["offset"])
 
                 return {
                     "distance_cm": distance_cm,
@@ -61,8 +72,7 @@ class TFMiniSSensor(BaseSensor):
     def initialize(self) -> bool:
         try:
             # Send version query command
-            version_cmd = bytes([0x5A, 0x04, 0x01, 0x5F])
-            self.adapter.write(version_cmd)
+            self.adapter.write(self.commands["version_query"])
             self.adapter.flush()
             response = self.adapter.read(32)
 
@@ -70,8 +80,7 @@ class TFMiniSSensor(BaseSensor):
                 logger.warning("%s no version response, continuing anyway", self.sensor_id)
 
             # Set output mode to standard (9-byte frames)
-            output_cmd = bytes([0x5A, 0x05, 0x05, 0x01, 0x65])
-            self.adapter.write(output_cmd)
+            self.adapter.write(self.commands["output_standard"])
             self.adapter.flush()
 
             self.status = SensorStatus.READY

@@ -105,6 +105,7 @@ class AnomalyDetector(BaseModel):
         except ModelInferenceError:
             raise
         except Exception as e:
+            logger.error("%s anomaly detection failed: %s", self.model_id, e)
             self._record_error(e)
             raise ModelInferenceError(f"Anomaly detection failed: {e}") from e
 

@@ -1,12 +1,11 @@
 """Unit tests for configuration management."""
 
 import pytest
-from pathlib import Path
 
 from utils.config import (
     TricorderConfig, I2CDeviceConfig, SPIDeviceConfig, UARTDeviceConfig,
     ADCChannelConfig, SensorConfig, ModelConfig, MCPServerConfig,
-    LangGraphAgentConfig, RAGConfig, MQTTConfig, LoggingConfig,
+    LangGraphAgentConfig, LoggingConfig,
     load_config, _apply_env_overrides, save_config,
 )
 

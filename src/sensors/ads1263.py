@@ -1,7 +1,7 @@
 """ADS1263 32-bit precision ADC sensor driver (SPI)."""
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict
 import logging
 
 from sensors.base import (
@@ -42,6 +42,10 @@ class ADS1263Sensor(BaseSensor):
     }
     DEFAULT_EXPECTED_ID = 0x01
     VREF = 2.5  # Internal reference voltage
+    DEFAULT_INIT_CONFIG = {
+        "ref_value": 0x19,    # Internal reference enabled
+        "filter_value": 0x04,  # Sinc1 filter, 20 SPS
+    }
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -54,6 +58,7 @@ class ADS1263Sensor(BaseSensor):
         self.expected_id = config.get("expected_id", self.DEFAULT_EXPECTED_ID)
         self.vref = config.get("vref", self.VREF)
         self.channels = config.get("channels", {})
+        self.init_config = config.get("init_config", self.DEFAULT_INIT_CONFIG)
 
     def _read_register(self, reg: int) -> int:
         cmd = [self.commands["rreg"] | reg, 0x00, 0x00]
@@ -79,9 +84,9 @@ class ADS1263Sensor(BaseSensor):
                     f"got 0x{device_id:02X}"
                 )
 
-            # Configure: internal reference, sinc1 filter
-            self._write_register(self.registers["ref"], 0x19)
-            self._write_register(self.registers["mode2"], 0x04)  # 20 SPS
+            # Configure: internal reference, filter mode
+            self._write_register(self.registers["ref"], self.init_config["ref_value"])
+            self._write_register(self.registers["mode2"], self.init_config["filter_value"])
 
             # Start conversion
             self.adapter.xfer2([self.commands["start1"]])

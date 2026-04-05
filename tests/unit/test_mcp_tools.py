@@ -1,10 +1,9 @@
 """Unit tests for MCP sensor and anomaly tools."""
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 from datetime import datetime, timezone
 
-import numpy as np
 
 from mcp_server.server import ToolRegistry
 from mcp_server.tools.sensor_tools import register_sensor_tools

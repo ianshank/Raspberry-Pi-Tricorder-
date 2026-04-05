@@ -5,7 +5,7 @@ All configuration is externalized to YAML files with environment variable overri
 NO hardcoded values in application code.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 import os
 import json

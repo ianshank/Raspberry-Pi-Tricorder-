@@ -212,16 +212,18 @@ class TricorderAgent:
     def synthesize_report_node(self, state: AgentState) -> Dict[str, Any]:
         """Generate final situation report from gathered evidence."""
         severity = state.get("severity", "LOW")
-        evidence = state.get("evidence", [])
+        evidence_items = state.get("evidence", [])
         tool_results = state.get("tool_results", [])
+        logger.debug("Synthesizing report: severity=%s, evidence=%d, tools=%d",
+                     severity, len(evidence_items), len(tool_results))
 
         # Build report from evidence
         report_lines = [
-            f"## Tricorder Situation Report",
+            "## Tricorder Situation Report",
             f"**Severity:** {severity}",
             f"**Mission Mode:** {self.mission_mode}",
             f"**Timestamp:** {datetime.now(timezone.utc).isoformat()}",
-            f"",
+            "",
             f"### Evidence Collected ({len(tool_results)} tool calls)",
         ]
 

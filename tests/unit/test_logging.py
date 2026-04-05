@@ -1,8 +1,6 @@
 """Unit tests for logging setup."""
 
-import pytest
 import logging
-from pathlib import Path
 
 from utils.config import LoggingConfig
 from utils.logging_setup import setup_logging

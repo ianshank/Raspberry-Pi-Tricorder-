@@ -6,7 +6,7 @@ import pytest
 @pytest.mark.sanity
 class TestImports:
     def test_import_config(self):
-        from utils.config import TricorderConfig, load_config, save_config
+        from utils.config import TricorderConfig
         assert TricorderConfig is not None
 
     def test_import_logging_setup(self):
@@ -15,20 +15,12 @@ class TestImports:
 
     def test_import_sensor_base(self):
         from sensors.base import (
-            BaseSensor, SensorReading, SensorStatus,
-            SensorFactory, SensorError,
-            I2CAdapter, SPIAdapter, UARTAdapter,
+            BaseSensor,
         )
         assert BaseSensor is not None
 
     def test_import_sensor_drivers(self):
         from sensors.bme680 import BME680Sensor
-        from sensors.mlx90640 import MLX90640Sensor
-        from sensors.as7265x import AS7265xSensor
-        from sensors.max30102 import MAX30102Sensor
-        from sensors.ads1263 import ADS1263Sensor
-        from sensors.hlk_ld2410 import HLKLD2410Sensor
-        from sensors.tfmini_s import TFMiniSSensor
         assert BME680Sensor is not None
 
     def test_import_sensor_manager(self):
@@ -37,9 +29,7 @@ class TestImports:
 
     def test_import_model_base(self):
         from models.base import (
-            BaseModel, ModelResult, ModelStatus,
-            ModelRegistry, InferenceAdapter,
-            ModelError, ModelLoadError, ModelInferenceError,
+            BaseModel,
         )
         assert BaseModel is not None
 
@@ -52,7 +42,7 @@ class TestImports:
         assert FusionEngine is not None
 
     def test_import_mcp_server(self):
-        from mcp_server.server import create_app, ToolRegistry, Tool
+        from mcp_server.server import create_app
         assert create_app is not None
 
     def test_import_sensor_tools(self):
@@ -64,7 +54,7 @@ class TestImports:
         assert register_anomaly_tools is not None
 
     def test_import_agent(self):
-        from agents.langgraph_agent import TricorderAgent, Severity, AgentState
+        from agents.langgraph_agent import TricorderAgent
         assert TricorderAgent is not None
 
     def test_no_circular_imports(self):

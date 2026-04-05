@@ -48,6 +48,8 @@ class FusionEngine(BaseModel):
             expected = tuple(self.input_shape)
             if input_data.shape != expected:
                 if input_data.size == np.prod(expected):
+                    logger.debug("%s reshaping input %s -> %s",
+                                 self.model_id, input_data.shape, expected)
                     input_data = input_data.reshape(expected)
                 else:
                     raise ModelInferenceError(
@@ -77,6 +79,7 @@ class FusionEngine(BaseModel):
         except ModelInferenceError:
             raise
         except Exception as e:
+            logger.error("%s fusion predict failed: %s", self.model_id, e)
             self._record_error(e)
             raise ModelInferenceError(f"Fusion failed: {e}") from e
 
@@ -89,6 +92,8 @@ class FusionEngine(BaseModel):
         """
         if not sensor_embeddings:
             raise ModelInferenceError("No sensor embeddings provided")
+
+        logger.debug("Fusing %d sensor embeddings", len(sensor_embeddings))
 
         # Stack embeddings into token sequence
         embeddings = list(sensor_embeddings.values())

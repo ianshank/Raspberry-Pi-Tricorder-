@@ -1,13 +1,11 @@
 """Sanity/smoke tests for basic functionality."""
 
 import pytest
-from unittest.mock import Mock
-from pathlib import Path
 
 from utils.config import load_config, TricorderConfig
 from sensors.base import SensorFactory
 from sensors.manager import SensorManager
-from mcp_server.server import create_app, ToolRegistry
+from mcp_server.server import create_app
 from agents.langgraph_agent import TricorderAgent
 
 

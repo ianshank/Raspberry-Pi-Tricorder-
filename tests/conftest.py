@@ -2,11 +2,10 @@
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, PropertyMock
+from unittest.mock import Mock, PropertyMock
 from datetime import datetime, timezone
 
 import pytest
-import numpy as np
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

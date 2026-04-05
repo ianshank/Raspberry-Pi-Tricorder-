@@ -28,6 +28,9 @@ class MLX90640Sensor(BaseSensor):
         "device_id_reg": 0x2407,
     }
     DEFAULT_EXPECTED_DEVICE_ID_MASK = 0x00FF
+    DEFAULT_REFRESH_RATE_CMD = [0x09, 0x01]  # 4 Hz refresh rate
+    DEFAULT_I2C_CHUNK_SIZE = 32
+    DEFAULT_TEMP_SCALE_FACTOR = 0.02
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -35,6 +38,9 @@ class MLX90640Sensor(BaseSensor):
         self.registers = config.get("registers", self.DEFAULT_REGISTERS)
         self.frame_rows = config.get("frame_rows", FRAME_ROWS)
         self.frame_cols = config.get("frame_cols", FRAME_COLS)
+        self.refresh_rate_cmd = config.get("refresh_rate_cmd", self.DEFAULT_REFRESH_RATE_CMD)
+        self.i2c_chunk_size = config.get("i2c_chunk_size", self.DEFAULT_I2C_CHUNK_SIZE)
+        self.temp_scale_factor = config.get("temp_scale_factor", self.DEFAULT_TEMP_SCALE_FACTOR)
 
     def initialize(self) -> bool:
         try:
@@ -49,7 +55,7 @@ class MLX90640Sensor(BaseSensor):
             self.adapter.write_i2c_block_data(
                 self.address,
                 self.registers["control_reg"] & 0xFF,
-                [0x09, 0x01],  # 4 Hz refresh
+                self.refresh_rate_cmd,
             )
             self.status = SensorStatus.READY
             logger.info("%s initialized successfully", self.sensor_id)
@@ -63,9 +69,9 @@ class MLX90640Sensor(BaseSensor):
             self.status = SensorStatus.READING
             pixel_count = self.frame_rows * self.frame_cols
 
-            # Read raw frame data in chunks (I2C block read limited to 32 bytes)
+            # Read raw frame data in chunks (I2C block read size configurable)
             raw_bytes = []
-            chunk_size = 32
+            chunk_size = self.i2c_chunk_size
             for offset in range(0, pixel_count * 2, chunk_size):
                 reg = (self.registers["status_reg"] + offset) & 0xFF
                 length = min(chunk_size, pixel_count * 2 - offset)
@@ -80,7 +86,7 @@ class MLX90640Sensor(BaseSensor):
                 raw = (raw_bytes[i] << 8) | raw_bytes[i + 1]
                 if raw > 32767:
                     raw -= 65536
-                temp_c = raw * 0.02  # Simplified scale factor
+                temp_c = raw * self.temp_scale_factor
                 pixels.append(round(temp_c, 2))
 
             # Pad if we got fewer pixels than expected

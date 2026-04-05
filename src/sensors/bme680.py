@@ -37,12 +37,29 @@ class BME680Sensor(BaseSensor):
     }
 
     DEFAULT_EXPECTED_CHIP_ID = 0x61
+    DEFAULT_OVERSAMPLING = {
+        "humidity": 0x01,       # 1x oversampling
+        "temp_pressure": 0x25,  # temp 1x, pressure 1x, forced mode
+    }
+    DEFAULT_CALIBRATION = {
+        "temp_divisor": 16384.0,
+        "temp_scale": 40.0,
+        "temp_offset": -10.0,
+        "hum_divisor": 65535.0,
+        "hum_scale": 100.0,
+        "press_divisor": 16384.0,
+        "press_scale": 300.0,
+        "press_offset": 800.0,
+        "gas_multiplier": 100,
+    }
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
         self.address = config.get("address", 0x76)
         self.registers = config.get("registers", self.DEFAULT_REGISTERS)
         self.expected_chip_id = config.get("expected_chip_id", self.DEFAULT_EXPECTED_CHIP_ID)
+        self.oversampling = config.get("oversampling", self.DEFAULT_OVERSAMPLING)
+        self.calibration = config.get("calibration", self.DEFAULT_CALIBRATION)
 
     def initialize(self) -> bool:
         try:
@@ -56,11 +73,13 @@ class BME680Sensor(BaseSensor):
                 )
             # Configure humidity oversampling
             self.adapter.write_byte_data(
-                self.address, self.registers["ctrl_hum"], 0x01
+                self.address, self.registers["ctrl_hum"],
+                self.oversampling["humidity"],
             )
             # Configure temp/pressure oversampling
             self.adapter.write_byte_data(
-                self.address, self.registers["ctrl_meas"], 0x25
+                self.address, self.registers["ctrl_meas"],
+                self.oversampling["temp_pressure"],
             )
             self.status = SensorStatus.READY
             logger.info("%s initialized successfully", self.sensor_id)
@@ -95,10 +114,11 @@ class BME680Sensor(BaseSensor):
             gas_adc = (raw_gas[0] << 2) | (raw_gas[1] >> 6)
 
             # Simplified conversion (real driver would use calibration coefficients)
-            temp_c = temp_adc / 16384.0 * 40.0 - 10.0
-            humidity_rh = hum_adc / 65535.0 * 100.0
-            pressure_hpa = press_adc / 16384.0 * 300.0 + 800.0
-            gas_resistance_ohm = max(1, gas_adc) * 100
+            cal = self.calibration
+            temp_c = temp_adc / cal["temp_divisor"] * cal["temp_scale"] + cal["temp_offset"]
+            humidity_rh = hum_adc / cal["hum_divisor"] * cal["hum_scale"]
+            pressure_hpa = press_adc / cal["press_divisor"] * cal["press_scale"] + cal["press_offset"]
+            gas_resistance_ohm = max(1, gas_adc) * cal["gas_multiplier"]
 
             reading = SensorReading(
                 sensor_id=self.sensor_id,

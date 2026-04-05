@@ -2,13 +2,8 @@
 
 import pytest
 from unittest.mock import Mock
-from datetime import datetime, timezone
 
-from sensors.base import SensorFactory, SensorStatus
 from sensors.manager import SensorManager
-from sensors.bme680 import BME680Sensor
-from sensors.ads1263 import ADS1263Sensor
-from utils.config import load_config
 
 
 @pytest.mark.integration
@@ -16,7 +11,7 @@ class TestSensorPipeline:
     def test_factory_to_manager_flow(self, mock_i2c_adapter, bme680_config):
         """Config -> Factory.create -> Manager.register -> initialize -> read."""
         manager = SensorManager()
-        sensor = manager.create_from_config(
+        manager.create_from_config(
             "bme680", "pipeline_bme680", mock_i2c_adapter, bme680_config
         )
         assert manager.sensor_count == 1

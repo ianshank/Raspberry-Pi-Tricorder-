@@ -1,11 +1,10 @@
 """Unit tests for MCP server."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock
 
 from fastapi.testclient import TestClient
 
-from mcp_server.server import create_app, ToolRegistry, Tool, ToolCallRequest
+from mcp_server.server import create_app, ToolRegistry
 
 
 @pytest.fixture

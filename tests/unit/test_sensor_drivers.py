@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import Mock
-from datetime import datetime, timezone
 
 from sensors.bme680 import BME680Sensor
 from sensors.mlx90640 import MLX90640Sensor

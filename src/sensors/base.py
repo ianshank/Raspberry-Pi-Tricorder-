@@ -8,7 +8,7 @@ Drivers are hardware-agnostic and use injected I/O adapters for testing.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 import logging
 

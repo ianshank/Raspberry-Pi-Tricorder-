@@ -2,7 +2,6 @@
 
 import pytest
 from unittest.mock import Mock
-from datetime import datetime, timezone
 
 from agents.langgraph_agent import TricorderAgent
 

@@ -32,6 +32,11 @@ class HLKLD2410Sensor(BaseSensor):
         "max_still_gate": 8,
         "timeout_s": 5,
     }
+    DEFAULT_COMMAND_WORDS = {
+        "enable_config": 0x00FF,
+        "read_firmware": 0x0000,
+        "end_config": 0x00FE,
+    }
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -39,6 +44,7 @@ class HLKLD2410Sensor(BaseSensor):
         self.baud_rate = config.get("baud_rate", 115200)
         self.max_gate = config.get("max_gate", self.DEFAULT_CONFIG["max_gate"])
         self.timeout = config.get("timeout_s", self.DEFAULT_CONFIG["timeout_s"])
+        self.command_words = config.get("command_words", self.DEFAULT_COMMAND_WORDS)
 
     def _send_command(self, cmd_word: int, data: bytes = b'') -> Optional[bytes]:
         """Send command frame and read response."""
@@ -91,18 +97,20 @@ class HLKLD2410Sensor(BaseSensor):
     def initialize(self) -> bool:
         try:
             # Enable configuration mode
-            response = self._send_command(0x00FF, b'\x01\x00')
+            response = self._send_command(
+                self.command_words["enable_config"], b'\x01\x00',
+            )
             if response is None:
                 raise SensorInitializationError("No response from LD2410")
 
             # Read firmware version
-            fw_response = self._send_command(0x0000)
+            fw_response = self._send_command(self.command_words["read_firmware"])
             logger.debug("%s firmware response: %s",
                          self.sensor_id,
                          fw_response.hex() if fw_response else "none")
 
             # End configuration mode
-            self._send_command(0x00FE)
+            self._send_command(self.command_words["end_config"])
 
             self.status = SensorStatus.READY
             logger.info("%s initialized", self.sensor_id)
