@@ -154,6 +154,9 @@ class LangGraphAgentConfig(BaseModel):
     checkpoint_db_path: str = Field(default="data/agent_checkpoints.db")
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
+    severity_thresholds: Dict[str, float] = Field(
+        default_factory=lambda: {"low": 0.5, "medium": 0.75, "high": 0.9}
+    )
 
     @field_validator('mission_mode')
     @classmethod
@@ -170,6 +173,31 @@ class LangGraphAgentConfig(BaseModel):
         if v not in valid:
             raise ValueError(f"Threshold must be one of {valid}, got {v}")
         return v
+
+    @field_validator('severity_thresholds', mode='after')
+    @classmethod
+    def validate_severity_thresholds(cls, v: Dict[str, float]) -> Dict[str, float]:
+        """Normalize severity_thresholds: merge with defaults, validate ordering."""
+        defaults = {"low": 0.5, "medium": 0.75, "high": 0.9}
+        merged = {**defaults, **v}
+        
+        # Ensure all required keys are present
+        required_keys = {"low", "medium", "high"}
+        if not all(k in merged for k in required_keys):
+            raise ValueError(f"severity_thresholds must contain {required_keys}, got {set(merged.keys())}")
+        
+        # Validate ordering: low <= medium <= high
+        low = merged["low"]
+        medium = merged["medium"]
+        high = merged["high"]
+        
+        if not (0.0 <= low <= medium <= high <= 1.0):
+            raise ValueError(
+                f"Severity thresholds must satisfy: 0 <= low <= medium <= high <= 1, "
+                f"got low={low}, medium={medium}, high={high}"
+            )
+        
+        return merged
 
 
 class RAGConfig(BaseModel):

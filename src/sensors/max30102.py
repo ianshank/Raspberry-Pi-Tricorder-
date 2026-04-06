@@ -55,6 +55,25 @@ class MAX30102Sensor(BaseSensor):
         self.sample_rate = config.get("sample_rate", 100)
         self.device_config = config.get("device_config", self.DEFAULT_DEVICE_CONFIG)
         self.spo2_calibration = config.get("spo2_calibration", self.DEFAULT_SPO2_CALIBRATION)
+        
+        # Validate and normalize hr_bounds
+        defaults = {"min_bpm": 40, "max_bpm": 200}
+        self.hr_bounds = {**defaults, **(config.get("hr_bounds") or {})}
+        
+        # Validate bounds
+        min_bpm = self.hr_bounds.get("min_bpm", 40)
+        max_bpm = self.hr_bounds.get("max_bpm", 200)
+        
+        if not isinstance(min_bpm, (int, float)) or not isinstance(max_bpm, (int, float)):
+            raise ValueError(f"HR bounds must be numeric, got min_bpm={min_bpm}, max_bpm={max_bpm}")
+        
+        if min_bpm < 0 or max_bpm < 0:
+            raise ValueError(f"HR bounds must be positive, got min_bpm={min_bpm}, max_bpm={max_bpm}")
+        
+        if min_bpm >= max_bpm:
+            raise ValueError(f"min_bpm ({min_bpm}) must be < max_bpm ({max_bpm})")
+        
+        self.hr_bounds = {"min_bpm": min_bpm, "max_bpm": max_bpm}
 
     def initialize(self) -> bool:
         try:
@@ -139,7 +158,9 @@ class MAX30102Sensor(BaseSensor):
             ratio = avg_red / max(avg_ir, 1)
             spo2_cal = self.spo2_calibration
             spo2_estimate = max(0, min(100, spo2_cal["intercept"] - spo2_cal["slope"] * ratio))
-            hr_estimate = max(40, min(200, len(red_values) * 60 / max(num_samples, 1)))
+            min_bpm = self.hr_bounds.get("min_bpm", 40)
+            max_bpm = self.hr_bounds.get("max_bpm", 200)
+            hr_estimate = max(min_bpm, min(max_bpm, len(red_values) * 60 / max(num_samples, 1)))
 
             reading = SensorReading(
                 sensor_id=self.sensor_id,

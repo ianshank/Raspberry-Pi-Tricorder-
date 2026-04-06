@@ -29,7 +29,34 @@ class AnomalyDetector(BaseModel):
         self.input_shape = config.get("input_shape", [1, 256, 10])
         self.output_shape = config.get("output_shape", [1, 10])
         self._baseline_mse: float = 0.0
+        
+        # Validate and normalize max_history
+        self.max_history = self._get_valid_max_history(config.get("max_history", 1000))
         self._anomaly_history: list = []
+
+    @staticmethod
+    def _get_valid_max_history(max_history: Any) -> int:
+        """Validate max_history: clamp to minimum 1.
+        
+        Args:
+            max_history: Raw config value (may be invalid)
+            
+        Returns:
+            Valid max_history value (minimum 1)
+            
+        Raises:
+            ValueError: If max_history is not numeric
+        """
+        if not isinstance(max_history, (int, float)):
+            raise ValueError(f"max_history must be numeric, got {type(max_history).__name__}")
+        
+        clamped = max(1, int(max_history))
+        if clamped != int(max_history):
+            logger.warning(
+                "max_history %s clamped to valid range [1, inf): using %d",
+                max_history, clamped
+            )
+        return clamped
 
     def load(self) -> bool:
         try:
@@ -87,9 +114,9 @@ class AnomalyDetector(BaseModel):
                 "is_anomaly": is_anomaly,
             }
             self._anomaly_history.append(result_entry)
-            # Keep last 1000 entries
-            if len(self._anomaly_history) > 1000:
-                self._anomaly_history = self._anomaly_history[-1000:]
+            # Keep last max_history entries
+            if len(self._anomaly_history) > self.max_history:
+                self._anomaly_history = self._anomaly_history[-self.max_history:]
 
             return ModelResult(
                 output={

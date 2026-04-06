@@ -123,11 +123,17 @@ class TricorderAgent:
         event = event_raw if isinstance(event_raw, dict) else {}
         anomaly_score = event.get("anomaly_score", 0.0)
 
-        if anomaly_score >= 0.9:
+        # Get configurable severity thresholds (with defensive fallback)
+        thresholds = self.config.get("severity_thresholds", {})
+        high_thresh = thresholds.get("high", 0.9)
+        medium_thresh = thresholds.get("medium", 0.75)
+        low_thresh = thresholds.get("low", 0.5)
+
+        if anomaly_score >= high_thresh:
             severity = Severity.CRITICAL
-        elif anomaly_score >= 0.75:
+        elif anomaly_score >= medium_thresh:
             severity = Severity.HIGH
-        elif anomaly_score >= 0.5:
+        elif anomaly_score >= low_thresh:
             severity = Severity.MEDIUM
         else:
             severity = Severity.LOW
