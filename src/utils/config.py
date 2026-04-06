@@ -369,6 +369,7 @@ class LoggingConfig(BaseModel):
     file_path: Optional[str] = Field(default="logs/tricorder.log")
     max_bytes: int = Field(default=10485760, gt=0, description="10 MB default")
     backup_count: int = Field(default=5, ge=0, le=20)
+    json_format: bool = Field(default=False, description="Emit structured JSON logs (production)")
 
     @field_validator('level')
     @classmethod
@@ -377,6 +378,14 @@ class LoggingConfig(BaseModel):
         if v not in valid:
             raise ValueError(f"Log level must be one of {valid}, got {v}")
         return v
+
+
+class FeatureFlagsConfig(BaseModel):
+    """Feature flags for toggling capabilities at runtime."""
+    structured_logging: bool = Field(default=False, description="Enable JSON structured logging")
+    anomaly_ack: bool = Field(default=True, description="Enable anomaly acknowledgment endpoint")
+    agent_chat: bool = Field(default=True, description="Enable agent chat endpoint")
+    mqtt_publishing: bool = Field(default=True, description="Enable MQTT event publishing")
 
 
 class TricorderConfig(BaseModel):
@@ -393,6 +402,7 @@ class TricorderConfig(BaseModel):
     mqtt: MQTTConfig = Field(default_factory=MQTTConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
 
     model_config = {"extra": "forbid"}
 

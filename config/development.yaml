@@ -1,0 +1,20 @@
+# Development environment overrides
+# Inherits from base.yaml — only list values that differ.
+
+environment: "development"
+
+logging:
+  level: "DEBUG"
+  json_format: false
+
+mcp_server:
+  auth_enabled: false
+
+feature_flags:
+  structured_logging: false
+  anomaly_ack: true
+  agent_chat: true
+  mqtt_publishing: false
+
+ui:
+  debug: true

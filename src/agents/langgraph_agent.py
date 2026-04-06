@@ -13,6 +13,21 @@ import operator
 logger = logging.getLogger(__name__)
 
 
+class AgentError(Exception):
+    """Base exception for agent-related errors."""
+    pass
+
+
+class AgentToolError(AgentError):
+    """Raised when an agent tool call fails."""
+    pass
+
+
+class AgentTimeoutError(AgentError):
+    """Raised when the agent exceeds iteration or time limits."""
+    pass
+
+
 class Severity(Enum):
     """Alert severity levels."""
     LOW = "LOW"
@@ -385,7 +400,7 @@ def main() -> None:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     result = agent.run(test_event)
-    print(result.get("report", "No report generated"))
+    logger.info("Agent report: %s", result.get("report", "No report generated"))
 
 
 if __name__ == "__main__":

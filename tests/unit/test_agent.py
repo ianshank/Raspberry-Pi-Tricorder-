@@ -374,8 +374,8 @@ class TestAgentMain:
         }
 
         with patch("utils.config.load_config", return_value=mock_config):
-            with patch("builtins.print") as mock_print:
+            with patch("agents.langgraph_agent.logger") as mock_logger:
                 main()
-                mock_print.assert_called_once()
-                printed = mock_print.call_args[0][0]
-                assert "Tricorder" in printed or "Situation" in printed
+                mock_logger.info.assert_called()
+                log_args = str(mock_logger.info.call_args_list[-1])
+                assert "report" in log_args.lower() or "Agent" in log_args

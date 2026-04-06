@@ -9,12 +9,21 @@ from models.base import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
-MAX_SENSOR_DATA_ITEMS = 10_000
+DEFAULT_MAX_SENSOR_DATA_ITEMS = 10_000
 GENERIC_ANOMALY_SCAN_ERROR = "Anomaly scan operation failed. Check logs for details."
 
 
-def register_anomaly_tools(registry: Any) -> None:
-    """Register anomaly detection MCP tools."""
+def register_anomaly_tools(
+    registry: Any,
+    max_sensor_data_items: int = DEFAULT_MAX_SENSOR_DATA_ITEMS,
+) -> None:
+    """Register anomaly detection MCP tools.
+
+    Args:
+        registry: Tool registry to register with.
+        max_sensor_data_items: Upper bound on sensor_data array length.
+    """
+    effective_limit = max_sensor_data_items
 
     def run_anomaly_scan(
         model_id: str = "anomaly_detector",
@@ -27,11 +36,11 @@ def register_anomaly_tools(registry: Any) -> None:
 
         try:
             if sensor_data is not None:
-                if len(sensor_data) > MAX_SENSOR_DATA_ITEMS:
+                if len(sensor_data) > effective_limit:
                     return {
                         "error": (
                             f"sensor_data exceeds maximum item count "
-                            f"({MAX_SENSOR_DATA_ITEMS})"
+                            f"({effective_limit})"
                         )
                     }
                 input_array = np.array(sensor_data, dtype=np.float32)
@@ -73,7 +82,7 @@ def register_anomaly_tools(registry: Any) -> None:
                 },
                 "sensor_data": {
                     "type": "array",
-                    "maxItems": MAX_SENSOR_DATA_ITEMS,
+                    "maxItems": effective_limit,
                     "description": "Optional sensor data array. If omitted, uses buffered data.",
                 },
             },

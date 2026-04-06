@@ -21,6 +21,21 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+class MCPServerError(Exception):
+    """Base exception for MCP server errors."""
+    pass
+
+
+class ToolExecutionError(MCPServerError):
+    """Raised when a tool call fails during execution."""
+    pass
+
+
+class AuthenticationError(MCPServerError):
+    """Raised when an authentication check fails."""
+    pass
+
+
 DEFAULT_UI_WS_PATH = "/ws/sensors"
 DEFAULT_UI_ANOMALY_WS_PATH = "/ws/anomalies"
 DEFAULT_UI_ANOMALY_ACK_PATH = "/ui/anomalies/ack"

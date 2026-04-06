@@ -180,3 +180,10 @@ logging:
   file_path: "logs/tricorder.log"
   max_bytes: 10485760
   backup_count: 5
+  json_format: false
+
+feature_flags:
+  structured_logging: false
+  anomaly_ack: true
+  agent_chat: true
+  mqtt_publishing: true
