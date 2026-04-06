@@ -108,6 +108,7 @@ class AnomalyDetector(BaseModel):
                 "is_anomaly": is_anomaly,
             }
             self._anomaly_history.append(result_entry)
+            # Keep last max_history entries
             if len(self._anomaly_history) > self.max_history:
                 self._anomaly_history = self._anomaly_history[-self.max_history:]
 
