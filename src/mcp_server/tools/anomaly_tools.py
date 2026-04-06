@@ -13,6 +13,25 @@ DEFAULT_MAX_SENSOR_DATA_ITEMS = 10_000
 GENERIC_ANOMALY_SCAN_ERROR = "Anomaly scan operation failed. Check logs for details."
 
 
+def _exceeds_total_item_limit(value: Any, limit: int) -> bool:
+    """Return True when a nested list/tuple payload contains more than *limit* scalar items.
+
+    Uses iterative stack traversal to avoid recursion depth limits on deeply
+    nested payloads.
+    """
+    total_items = 0
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (list, tuple)):
+            stack.extend(current)
+            continue
+        total_items += 1
+        if total_items > limit:
+            return True
+    return False
+
+
 def register_anomaly_tools(
     registry: Any,
     max_sensor_data_items: int = DEFAULT_MAX_SENSOR_DATA_ITEMS,
@@ -43,7 +62,7 @@ def register_anomaly_tools(
 
         try:
             if sensor_data is not None:
-                if len(sensor_data) > effective_limit:
+                if _exceeds_total_item_limit(sensor_data, effective_limit):
                     return {
                         "error": (
                             f"sensor_data exceeds maximum item count "
@@ -51,6 +70,15 @@ def register_anomaly_tools(
                         )
                     }
                 input_array = np.array(sensor_data, dtype=np.float32)
+                # Defense-in-depth: reject if numpy materialized more elements
+                # than the limit (e.g. via broadcasting or unexpected coercion).
+                if input_array.size > effective_limit:
+                    return {
+                        "error": (
+                            f"sensor_data exceeds maximum item count "
+                            f"({effective_limit})"
+                        )
+                    }
                 if not np.all(np.isfinite(input_array)):
                     return {"error": "sensor_data contains non-finite values"}
             else:

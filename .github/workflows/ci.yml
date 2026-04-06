@@ -42,7 +42,7 @@ jobs:
         run: >
           PYTHONPATH=src python -m pytest tests/
           --cov=src
-          --cov-fail-under=70
+          --cov-fail-under=85
           --cov-report=term-missing
           --cov-report=html
           -v
