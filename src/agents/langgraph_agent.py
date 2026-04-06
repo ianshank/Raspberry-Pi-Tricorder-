@@ -380,6 +380,15 @@ class TricorderAgent:
             if decision == "synthesize":
                 break
             merge_state(state, self.plan_tools_node(state))
+        else:
+            # Loop exhausted without a "synthesize" decision — log timeout warning
+            logger.warning(
+                "Agent reached max_iterations=%d without completing; forcing synthesis",
+                self.max_iterations,
+            )
+            cast(Dict[str, Any], state)["_timeout"] = AgentTimeoutError(
+                f"Agent did not complete within {self.max_iterations} iterations"
+            )
 
         merge_state(state, self.synthesize_report_node(state))
         return dict(state)
