@@ -52,6 +52,23 @@ make run
 
 Open `http://127.0.0.1:8000/ui/index.html`
 
+## Screenshots
+
+> **No hardware required** — run with simulated sensors (see Quick Start above).  
+> Screenshot files live in [`docs/screenshots/`](docs/screenshots/CAPTURING.md). Add your own by following the capture guide there.
+
+| Dashboard — LCARS live view | Anomaly alert + ACK |
+|---|---|
+| ![LCARS dashboard showing live sensor tiles and LIVE status indicator](docs/screenshots/dashboard-live.png) | ![Anomaly alert toast stack with ACK button highlighted](docs/screenshots/anomaly-alert.png) |
+
+| Environmental panel | Biosigns panel |
+|---|---|
+| ![Environmental panel showing BME680 pressure humidity VOC and AS7265x spectral readings](docs/screenshots/env-panel.png) | ![Biosigns panel showing MAX30102 heart rate SpO2 and MLX90640 thermal readings](docs/screenshots/bio-panel.png) |
+
+| Engineering panel | Agent inference report |
+|---|---|
+| ![Engineering panel showing radar presence confidence and TFMini-S LiDAR distance](docs/screenshots/eng-panel.png) | ![Agent chat panel showing completed markdown inference report](docs/screenshots/agent-chat.png) |
+
 ## Project Structure
 
 ```text
