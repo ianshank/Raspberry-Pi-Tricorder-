@@ -119,10 +119,10 @@ class TestEnvOverrideEdgeCases:
 
     def test_env_override_creates_nested_missing_key(self, monkeypatch):
         """Missing nested path creates intermediate dicts."""
-        monkeypatch.setenv("TESTPFX_NEW_SECTION_KEY", "value")
+        monkeypatch.setenv("TESTPFX__NEW_SECTION__KEY", "value")
         config: dict = {}
         result = _apply_env_overrides(config, prefix="TESTPFX")
-        assert result.get("new", {}).get("section", {}).get("key") == "value"
+        assert result.get("new_section", {}).get("key") == "value"
 
 
 # ========== ModelRegistry.clear() ==========

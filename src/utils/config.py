@@ -443,13 +443,19 @@ def _apply_env_overrides(config: Dict[str, Any], prefix: str = "TRICORDER") -> D
     """
     Apply environment variable overrides to config dictionary.
 
-    TRICORDER_LOGGING_LEVEL=DEBUG overrides config['logging']['level']
+    Uses double-underscore ``__`` as the nesting separator so that field
+    names containing underscores (e.g. ``mcp_server``, ``json_format``)
+    are preserved.
+
+    TRICORDER__LOGGING__LEVEL=DEBUG  →  config['logging']['level']
+    TRICORDER__MCP_SERVER__HOST=0.0.0.0  →  config['mcp_server']['host']
     """
+    sep = "__"
     for env_key, env_value in os.environ.items():
-        if not env_key.startswith(f"{prefix}_"):
+        if not env_key.startswith(f"{prefix}{sep}"):
             continue
 
-        keys = env_key[len(prefix) + 1:].lower().split('_')
+        keys = [k.lower() for k in env_key[len(prefix) + len(sep):].split(sep)]
 
         current = config
         for key in keys[:-1]:
