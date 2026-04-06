@@ -135,6 +135,45 @@ mqtt:
   keepalive_s: 60
   enabled: true
 
+ui:
+  enabled: true
+  static_dir: "src/ui/static"
+  poll_interval_ms: 1000
+  ws_heartbeat_s: 30
+  ws_path: "/ws/sensors"
+  anomaly_ws_path: "/ws/anomalies"
+  anomaly_poll_interval_ms: 2000
+  anomaly_model_id: "anomaly_detector"
+  anomaly_history_limit: 1
+  anomaly_ack_enabled: true
+  anomaly_ack_path: "/ui/anomalies/ack"
+  anomaly_ack_history_limit: 500
+  anomaly_alert_threshold: 0.75
+  agent_enabled: true
+  agent_chat_path: "/ui/agent/chat"
+  reconnect_initial_ms: 1500
+  reconnect_max_ms: 10000
+  theme: "classic"
+  debug: false
+  panel_order: ["bio", "env", "eng", "agent"]
+  panels:
+    bio:
+      label: "BIO / MEDICAL"
+      sensors: ["max30102", "mlx90640"]
+      color: "anakiwa"
+    env:
+      label: "ENV / ATMOS"
+      sensors: ["bme680", "as7265x", "ads1263"]
+      color: "golden-tanoi"
+    eng:
+      label: "ENG / SPATIAL"
+      sensors: ["hlk_ld2410", "tfmini_s"]
+      color: "melrose"
+    agent:
+      label: "LIBRARY COMPUTER"
+      sensors: []
+      color: "white"
+
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

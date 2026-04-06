@@ -16,7 +16,7 @@ class SensorManager:
     unified interface for reading, diagnostics, and management.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._sensors: Dict[str, BaseSensor] = {}
 
     def register_sensor(self, sensor_id: str, sensor: BaseSensor) -> None:

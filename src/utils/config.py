@@ -5,15 +5,52 @@ All configuration is externalized to YAML files with environment variable overri
 NO hardcoded values in application code.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pathlib import Path
 import os
 import json
-import yaml
-from pydantic import BaseModel, Field, field_validator
+import yaml  # type: ignore[import-untyped]
+from pydantic import BaseModel, Field, field_validator, model_validator
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+LCARS_COLORS = {
+    "anakiwa",
+    "atomic-tangerine",
+    "bahama-blue",
+    "blue",
+    "blue-bell",
+    "bourbon",
+    "chestnut-rose",
+    "cosmic",
+    "danub",
+    "dodger-blue",
+    "dodger-blue-alt",
+    "eggplant",
+    "golden-tanoi",
+    "gray",
+    "hopbush",
+    "husk",
+    "indigo",
+    "lavender-purple",
+    "lilac",
+    "mariner",
+    "medium-carmine",
+    "melrose",
+    "navy-blue",
+    "neon-carrot",
+    "orange-peel",
+    "pale-canary",
+    "periwinkle",
+    "red-alert",
+    "red-damask",
+    "rust",
+    "sandy-brown",
+    "tamarillo",
+    "white",
+}
 
 
 class I2CDeviceConfig(BaseModel):
@@ -26,7 +63,7 @@ class I2CDeviceConfig(BaseModel):
 
     @field_validator('address')
     @classmethod
-    def validate_address(cls, v):
+    def validate_address(cls, v: int) -> int:
         if v < 0x03 or v > 0x77:
             raise ValueError(f"I2C address 0x{v:02X} is outside valid range (0x03-0x77)")
         return v
@@ -83,7 +120,7 @@ class ModelConfig(BaseModel):
 
     @field_validator('quantization')
     @classmethod
-    def validate_quantization(cls, v):
+    def validate_quantization(cls, v: str) -> str:
         valid = {"fp32", "fp16", "int8", "int4"}
         if v not in valid:
             raise ValueError(f"Quantization must be one of {valid}, got {v}")
@@ -101,7 +138,7 @@ class MCPServerConfig(BaseModel):
 
     @field_validator('transport')
     @classmethod
-    def validate_transport(cls, v):
+    def validate_transport(cls, v: str) -> str:
         valid = {"http", "stdio"}
         if v not in valid:
             raise ValueError(f"Transport must be one of {valid}, got {v}")
@@ -120,7 +157,7 @@ class LangGraphAgentConfig(BaseModel):
 
     @field_validator('mission_mode')
     @classmethod
-    def validate_mission_mode(cls, v):
+    def validate_mission_mode(cls, v: str) -> str:
         valid = {"patrol", "investigation", "cbrn", "maintenance"}
         if v not in valid:
             raise ValueError(f"Mission mode must be one of {valid}, got {v}")
@@ -128,7 +165,7 @@ class LangGraphAgentConfig(BaseModel):
 
     @field_validator('human_in_loop_threshold')
     @classmethod
-    def validate_threshold(cls, v):
+    def validate_threshold(cls, v: str) -> str:
         valid = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
         if v not in valid:
             raise ValueError(f"Threshold must be one of {valid}, got {v}")
@@ -153,6 +190,132 @@ class MQTTConfig(BaseModel):
     enabled: bool = Field(default=True)
 
 
+class PanelConfig(BaseModel):
+    """UI panel configuration."""
+
+    label: str = Field(..., min_length=1, description="Human-readable panel title")
+    sensors: List[str] = Field(default_factory=list, description="Ordered sensor IDs")
+    color: str = Field(default="golden-tanoi", description="LCARS color name")
+
+    @field_validator("color")
+    @classmethod
+    def validate_color(cls, v: str) -> str:
+        if v not in LCARS_COLORS:
+            raise ValueError(f"Unknown LCARS color: {v}")
+        return v
+
+
+class UIConfig(BaseModel):
+    """Frontend UI configuration."""
+
+    enabled: bool = Field(default=True, description="Enable built-in UI serving")
+    static_dir: str = Field(
+        default="src/ui/static",
+        min_length=1,
+        description="Static assets directory, relative to project root or absolute",
+    )
+    poll_interval_ms: int = Field(
+        default=1000,
+        ge=100,
+        le=10000,
+        description="Sensor stream polling interval in milliseconds",
+    )
+    ws_heartbeat_s: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="WebSocket heartbeat/keepalive interval in seconds",
+    )
+    ws_path: str = Field(
+        default="/ws/sensors",
+        min_length=1,
+        description="WebSocket path used by the UI data service",
+    )
+    anomaly_ws_path: str = Field(
+        default="/ws/anomalies",
+        min_length=1,
+        description="WebSocket path used for anomaly and alert streaming",
+    )
+    anomaly_poll_interval_ms: int = Field(
+        default=2000,
+        ge=250,
+        le=60000,
+        description="Polling cadence for anomaly stream in milliseconds",
+    )
+    anomaly_model_id: str = Field(
+        default="anomaly_detector",
+        min_length=1,
+        description="Anomaly model ID used by streaming and chat context",
+    )
+    anomaly_history_limit: int = Field(
+        default=1,
+        ge=1,
+        le=100,
+        description="Maximum anomaly history entries attached to stream payloads",
+    )
+    anomaly_ack_enabled: bool = Field(
+        default=True,
+        description="Enable anomaly acknowledgment endpoint and UI controls",
+    )
+    anomaly_ack_path: str = Field(
+        default="/ui/anomalies/ack",
+        min_length=1,
+        description="HTTP endpoint path used by UI anomaly acknowledgment actions",
+    )
+    anomaly_ack_history_limit: int = Field(
+        default=500,
+        ge=1,
+        le=10000,
+        description="Maximum number of acknowledged anomaly records kept in memory",
+    )
+    anomaly_alert_threshold: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description="Fallback anomaly threshold when model output omits anomaly flag",
+    )
+    agent_enabled: bool = Field(default=True, description="Enable backend agent chat endpoint")
+    agent_chat_path: str = Field(
+        default="/ui/agent/chat",
+        min_length=1,
+        description="HTTP endpoint path used by UI agent chat panel",
+    )
+    reconnect_initial_ms: int = Field(
+        default=1500,
+        ge=250,
+        le=120000,
+        description="Initial reconnect delay for websocket in milliseconds",
+    )
+    reconnect_max_ms: int = Field(
+        default=10000,
+        ge=500,
+        le=300000,
+        description="Maximum reconnect delay for websocket in milliseconds",
+    )
+    theme: Literal["classic", "enterprise", "defiant"] = Field(default="classic")
+    debug: bool = Field(default=False, description="Enable extra UI diagnostics")
+    panel_order: List[str] = Field(
+        default_factory=list,
+        description="Optional ordered panel keys; defaults to config declaration order",
+    )
+    panels: Dict[str, PanelConfig] = Field(default_factory=dict)
+
+    model_config = {"extra": "forbid"}
+
+    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "anomaly_ack_path")
+    @classmethod
+    def validate_path(cls, v: str) -> str:
+        if not v.startswith("/"):
+            raise ValueError("Path values must start with '/'")
+        return v
+
+    @model_validator(mode="after")
+    def validate_reconnect_bounds(self) -> "UIConfig":
+        if self.reconnect_max_ms < self.reconnect_initial_ms:
+            raise ValueError("reconnect_max_ms must be >= reconnect_initial_ms")
+        return self
+
+
 class LoggingConfig(BaseModel):
     """Logging configuration."""
     level: str = Field(default="INFO")
@@ -163,7 +326,7 @@ class LoggingConfig(BaseModel):
 
     @field_validator('level')
     @classmethod
-    def validate_level(cls, v):
+    def validate_level(cls, v: str) -> str:
         valid = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         if v not in valid:
             raise ValueError(f"Log level must be one of {valid}, got {v}")
@@ -182,13 +345,14 @@ class TricorderConfig(BaseModel):
     agent: LangGraphAgentConfig = Field(default_factory=LangGraphAgentConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     mqtt: MQTTConfig = Field(default_factory=MQTTConfig)
+    ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     model_config = {"extra": "forbid"}
 
     @field_validator('environment')
     @classmethod
-    def validate_environment(cls, v):
+    def validate_environment(cls, v: str) -> str:
         valid = {"development", "staging", "production"}
         if v not in valid:
             raise ValueError(f"Environment must be one of {valid}, got {v}")

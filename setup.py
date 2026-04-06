@@ -12,6 +12,7 @@ setup(
         "pyyaml>=6.0.0",
         "fastapi>=0.115.0",
         "uvicorn>=0.32.0",
+        "websockets>=12.0",
         "numpy>=1.26.0",
     ],
     extras_require={

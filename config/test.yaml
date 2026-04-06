@@ -70,6 +70,37 @@ agent:
   mission_mode: "patrol"
   human_in_loop_threshold: "HIGH"
 
+ui:
+  enabled: true
+  static_dir: "src/ui/static"
+  poll_interval_ms: 500
+  ws_heartbeat_s: 30
+  ws_path: "/ws/sensors"
+  anomaly_ws_path: "/ws/anomalies"
+  anomaly_poll_interval_ms: 500
+  anomaly_model_id: "anomaly_detector"
+  anomaly_history_limit: 1
+  anomaly_ack_enabled: true
+  anomaly_ack_path: "/ui/anomalies/ack"
+  anomaly_ack_history_limit: 100
+  anomaly_alert_threshold: 0.75
+  agent_enabled: true
+  agent_chat_path: "/ui/agent/chat"
+  reconnect_initial_ms: 500
+  reconnect_max_ms: 3000
+  theme: "classic"
+  debug: true
+  panel_order: ["bio", "agent"]
+  panels:
+    bio:
+      label: "BIO"
+      sensors: ["mlx90640"]
+      color: "anakiwa"
+    agent:
+      label: "LIBRARY COMPUTER"
+      sensors: []
+      color: "white"
+
 logging:
   level: "DEBUG"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

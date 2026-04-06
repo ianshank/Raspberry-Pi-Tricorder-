@@ -109,7 +109,7 @@ class BaseSensor(ABC):
         """Read current sensor value."""
         pass
 
-    def calibrate(self, **kwargs) -> bool:
+    def calibrate(self, **kwargs: Any) -> bool:
         """Calibrate sensor (optional)."""
         logger.warning("%s does not implement calibration", self.sensor_id)
         return False

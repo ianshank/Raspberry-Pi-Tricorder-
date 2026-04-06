@@ -4,7 +4,7 @@ Implements a stateful agent with sensor monitoring, evidence gathering,
 tool planning/execution, and report synthesis nodes.
 """
 
-from typing import Any, Dict, List, Optional, TypedDict, Annotated
+from typing import Any, Dict, List, Optional, TypedDict, Annotated, cast
 from datetime import datetime, timezone
 from enum import Enum
 import logging
@@ -27,11 +27,11 @@ class Severity(Enum):
         except KeyError:
             return cls.LOW
 
-    def __ge__(self, other):
+    def __ge__(self, other: "Severity") -> bool:
         order = [self.LOW, self.MEDIUM, self.HIGH, self.CRITICAL]
         return order.index(self) >= order.index(other)
 
-    def __gt__(self, other):
+    def __gt__(self, other: "Severity") -> bool:
         order = [self.LOW, self.MEDIUM, self.HIGH, self.CRITICAL]
         return order.index(self) > order.index(other)
 
@@ -77,11 +77,11 @@ class TricorderAgent:
             config.get("human_in_loop_threshold", "HIGH")
         )
         self.tool_caller = tool_caller
-        self._graph = None
+        self._graph: Any = None
         logger.info("TricorderAgent created: mode=%s, model=%s",
                      self.mission_mode, self.model_name)
 
-    def build_graph(self):
+    def build_graph(self) -> Any:
         """Build the LangGraph state graph. Requires langgraph package."""
         try:
             from langgraph.graph import StateGraph, END
@@ -112,14 +112,15 @@ class TricorderAgent:
         logger.info("LangGraph state graph compiled")
         return self._graph
 
-    def _build_standalone_graph(self):
+    def _build_standalone_graph(self) -> str:
         """Fallback graph without langgraph dependency."""
         self._graph = "standalone"
         return self._graph
 
     def sensor_monitor_node(self, state: AgentState) -> Dict[str, Any]:
         """Entry node: receive and classify anomaly event."""
-        event = state.get("anomaly_event", {})
+        event_raw = state.get("anomaly_event", {})
+        event = event_raw if isinstance(event_raw, dict) else {}
         anomaly_score = event.get("anomaly_score", 0.0)
 
         if anomaly_score >= 0.9:
@@ -147,7 +148,8 @@ class TricorderAgent:
 
     def evidence_gather_node(self, state: AgentState) -> Dict[str, Any]:
         """Gather additional sensor evidence based on anomaly context."""
-        event = state.get("anomaly_event", {})
+        event_raw = state.get("anomaly_event", {})
+        event = event_raw if isinstance(event_raw, dict) else {}
         affected_sensors = event.get("affected_sensors", [])
 
         # Determine which sensors to query for evidence
@@ -279,13 +281,17 @@ class TricorderAgent:
         # Fallback: sequential execution (manually accumulate list fields)
         state = initial_state
 
-        def merge_state(state, updates):
+        def merge_state(state: AgentState, updates: Dict[str, Any]) -> None:
             """Merge updates, accumulating Annotated list fields."""
+            mutable_state = cast(Dict[str, Any], state)
             for key, value in updates.items():
                 if key in ("messages", "evidence", "tool_results") and isinstance(value, list):
-                    state[key] = state.get(key, []) + value
+                    existing = mutable_state.get(key, [])
+                    if not isinstance(existing, list):
+                        existing = []
+                    mutable_state[key] = existing + value
                 else:
-                    state[key] = value
+                    mutable_state[key] = value
 
         merge_state(state, self.sensor_monitor_node(state))
         merge_state(state, self.evidence_gather_node(state))
@@ -299,10 +305,10 @@ class TricorderAgent:
             merge_state(state, self.plan_tools_node(state))
 
         merge_state(state, self.synthesize_report_node(state))
-        return state
+        return dict(state)
 
 
-def main():
+def main() -> None:
     """Entry point for running agent standalone."""
     from utils.config import load_config
 
