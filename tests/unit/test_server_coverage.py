@@ -335,3 +335,51 @@ class TestServerExceptionClasses:
     def test_auth_error_message(self):
         err = AuthenticationError("bad token")
         assert "bad token" in str(err)
+
+
+class TestDefaultToolBootstrap:
+    """Coverage for default tool bootstrap path when no registry is supplied."""
+
+    def test_create_app_bootstraps_default_tools(self):
+        app = create_app(config={"environment": "development", "ui": {"enabled": False}})
+        client = TestClient(app)
+
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["tools_registered"] >= 7
+
+        tools_resp = client.get("/tools")
+        assert tools_resp.status_code == 200
+        names = {tool["name"] for tool in tools_resp.json()}
+        assert {
+            "read_sensor",
+            "list_sensors",
+            "read_all_sensors",
+            "get_sensor_diagnostics",
+            "calibrate_sensor",
+            "run_anomaly_scan",
+            "get_anomaly_history",
+        }.issubset(names)
+
+    def test_development_bootstrap_returns_simulated_readings(self):
+        app = create_app(
+            config={
+                "environment": "development",
+                "ui": {"enabled": False},
+                "sensors": {
+                    "i2c_devices": {
+                        "bme680": {"enabled": True},
+                    }
+                },
+            }
+        )
+        client = TestClient(app)
+
+        resp = client.post(
+            "/tools/call",
+            json={"name": "read_all_sensors", "arguments": {}},
+        )
+        assert resp.status_code == 200
+        readings = resp.json()["content"]
+        assert "bme680" in readings
+        assert readings["bme680"]["timestamp"] is not None

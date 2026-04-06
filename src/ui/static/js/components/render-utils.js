@@ -32,7 +32,7 @@ export function normalizeReading(sensorId, payload) {
 
 export function formatTimestamp(rawValue) {
   if (!rawValue) {
-    return "NO TIMESTAMP";
+    return "AWAITING DATA";
   }
 
   const parsed = new Date(rawValue);

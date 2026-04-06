@@ -24,7 +24,7 @@ export class EngPanel extends BasePanel {
         { label: "STILL", value: typeof value.stationary_target_distance_cm === "number" ? value.stationary_target_distance_cm : 0 },
         { label: "DETECT", value: typeof value.detection_distance_cm === "number" ? value.detection_distance_cm : 0 },
       ];
-      cardBody.appendChild(createBars(ranges, Math.max(...ranges.map((entry) => entry.value), 1)));
+      cardBody.appendChild(createBars(ranges, Math.max(...ranges.map((entry) => entry.value), 600)));
       return;
     }
 
@@ -40,7 +40,10 @@ export class EngPanel extends BasePanel {
           { label: "DISTANCE CM", value: numericOrNA(value.distance_cm) },
           { label: "SIGNAL", value: numericOrNA(value.signal_strength) },
           { label: "TEMPERATURE C", value: numericOrNA(value.temperature_c) },
-          { label: "VALID", value: value.valid === false ? "FALSE" : "TRUE" },
+          {
+            label: "VALID",
+            value: value.valid === true ? "TRUE" : value.valid === false ? "FALSE" : "N/A",
+          },
         ]),
       );
 

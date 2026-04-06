@@ -149,9 +149,20 @@ async function boot() {
   try {
     const uiConfig = await fetchUiConfig();
     const panelKeys = orderedPanelKeys(uiConfig);
+    const firstPanel = panelKeys.length > 0 ? panelKeys[0] : "";
+    const firstLabel = firstPanel
+      ? uiConfig.panels[firstPanel]?.label || humanizeIdentifier(firstPanel)
+      : "";
 
     if (appTitle) {
       appTitle.textContent = uiConfig.project_name || "TRICORDER";
+      if (firstPanel) {
+        appTitle.setAttribute("href", `#${firstPanel}`);
+        appTitle.addEventListener("click", (event) => {
+          event.preventDefault();
+          activatePanel(firstPanel, firstLabel);
+        });
+      }
     }
 
     buildNavigation(uiConfig, panelKeys);
@@ -162,9 +173,7 @@ async function boot() {
       alertStack.mount(alertRoot);
     }
 
-    if (panelKeys.length > 0) {
-      const firstPanel = panelKeys[0];
-      const firstLabel = uiConfig.panels[firstPanel]?.label || humanizeIdentifier(firstPanel);
+    if (firstPanel) {
       activatePanel(firstPanel, firstLabel);
     } else {
       setStatus("NO PANELS CONFIGURED");

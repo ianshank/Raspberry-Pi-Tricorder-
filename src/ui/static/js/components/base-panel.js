@@ -77,7 +77,7 @@ export class BasePanel {
     header.classList.add(normalizeColorClass(this.panelConfig.color));
 
     const title = createElement("span", "", displayName);
-    const timestamp = createElement("span", "timestamp", "NO TIMESTAMP");
+    const timestamp = createElement("span", "timestamp", "AWAITING DATA");
     header.append(title, timestamp);
 
     const body = createElement("div", "sensor-card-body", undefined);
