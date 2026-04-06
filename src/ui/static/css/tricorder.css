@@ -1,0 +1,380 @@
+:root {
+  --tricorder-bg-a: #06121d;
+  --tricorder-bg-b: #01060b;
+  --tricorder-text: #f5fbff;
+  --tricorder-edge: #283949;
+  --tricorder-gap: 0.5rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 20%, #12273d 0%, transparent 35%),
+    radial-gradient(circle at 84% 0%, #352321 0%, transparent 28%),
+    linear-gradient(135deg, var(--tricorder-bg-a), var(--tricorder-bg-b));
+  color: var(--tricorder-text);
+  font-family: "Bahnschrift", "Franklin Gothic Medium", "Trebuchet MS", sans-serif;
+}
+
+.tricorder-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--tricorder-gap);
+  gap: var(--tricorder-gap);
+}
+
+.tricorder-header,
+.tricorder-footer {
+  flex: 0 0 auto;
+}
+
+.tricorder-content {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(13rem, 16rem) 1fr;
+  gap: var(--tricorder-gap);
+  min-height: 0;
+}
+
+.tricorder-nav {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--tricorder-edge);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel-nav-button {
+  width: 100%;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+  border: none;
+  color: #000;
+  font-weight: 700;
+}
+
+.panel-nav-button.is-active {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.tricorder-panel-host {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--tricorder-edge);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel-root {
+  display: none;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--tricorder-gap);
+}
+
+.panel-root.is-active {
+  display: grid;
+}
+
+.panel-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  letter-spacing: 0.05rem;
+  text-transform: uppercase;
+}
+
+.sensor-card {
+  border: 1px solid var(--tricorder-edge);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: rgba(3, 12, 18, 0.82);
+  display: flex;
+  flex-direction: column;
+  min-height: 10.5rem;
+}
+
+.sensor-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  color: #050708;
+  font-weight: 700;
+}
+
+.sensor-card-body {
+  padding: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.95rem;
+}
+
+.sensor-metrics {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.35rem 0.55rem;
+}
+
+.sensor-metrics dt {
+  margin: 0;
+  opacity: 0.82;
+}
+
+.sensor-metrics dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.bars {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 3.2rem 1fr auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.bar-track {
+  width: 100%;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #111a24;
+  border: 1px solid #2a3f57;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f68f5e, #f9d272);
+}
+
+.timestamp {
+  opacity: 0.75;
+  font-size: 0.82rem;
+}
+
+.raw-json {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #05090f;
+  border: 1px solid #25374c;
+  border-radius: 0.4rem;
+  padding: 0.45rem;
+  max-height: 7rem;
+  overflow: auto;
+}
+
+.status-ok {
+  color: #000;
+  background: #99f !important;
+}
+
+.status-error {
+  color: #fff;
+  background: #e10 !important;
+}
+
+.status-waiting {
+  color: #000;
+  background: #fc6 !important;
+}
+
+.tricorder-alert-stack {
+  position: fixed;
+  right: 1rem;
+  top: 5rem;
+  width: min(24rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.45rem;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.anomaly-alert-card {
+  pointer-events: auto;
+  margin: 0;
+  border-radius: 0.55rem;
+  border: 1px solid #3a5169;
+  padding: 0.6rem 0.7rem;
+  background: rgba(6, 12, 20, 0.95);
+  box-shadow: 0 0.4rem 0.9rem rgba(0, 0, 0, 0.45);
+}
+
+.anomaly-alert-title {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.04rem;
+}
+
+.anomaly-alert-time,
+.anomaly-alert-sensors {
+  margin: 0.2rem 0 0;
+  opacity: 0.86;
+  font-size: 0.82rem;
+}
+
+.anomaly-alert-controls {
+  margin-top: 0.45rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.anomaly-alert-ack {
+  border: 1px solid #8ca0b8;
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #111;
+  background: linear-gradient(180deg, #ebf1f8, #b8c8d8);
+  cursor: pointer;
+}
+
+.anomaly-alert-ack:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.anomaly-alert-card.is-acknowledged {
+  border-color: #7fbf9a;
+  box-shadow: 0 0.25rem 0.6rem rgba(29, 97, 56, 0.35);
+}
+
+.anomaly-alert-card.is-acknowledged .anomaly-alert-title {
+  opacity: 0.85;
+}
+
+.anomaly-alert-card.severity-critical {
+  border-color: #f35;
+  background: rgba(63, 6, 14, 0.95);
+}
+
+.anomaly-alert-card.severity-high {
+  border-color: #f87;
+  background: rgba(68, 22, 8, 0.95);
+}
+
+.anomaly-alert-card.severity-medium {
+  border-color: #fcb36f;
+}
+
+.anomaly-alert-card.severity-low {
+  border-color: #7fa0bf;
+}
+
+.agent-panel-root {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.agent-chat-history {
+  min-height: 15rem;
+  max-height: 56vh;
+  overflow-y: auto;
+  border: 1px solid #2e465f;
+  border-radius: 0.45rem;
+  background: rgba(5, 11, 18, 0.88);
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.agent-chat-message {
+  margin: 0;
+  border-radius: 0.4rem;
+  border: 1px solid #2f4661;
+  padding: 0.45rem 0.55rem;
+  background: rgba(4, 10, 16, 0.9);
+}
+
+.agent-chat-message.role-user {
+  border-color: #5e7fa5;
+}
+
+.agent-chat-message.role-assistant {
+  border-color: #f0b16f;
+}
+
+.agent-chat-message.role-error {
+  border-color: #d65b66;
+  background: rgba(42, 8, 13, 0.9);
+}
+
+.agent-chat-text,
+.agent-chat-meta {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.agent-chat-meta {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+
+.agent-chat-controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem;
+}
+
+.agent-chat-input,
+.agent-chat-send {
+  border: 1px solid #3a526d;
+  border-radius: 0.35rem;
+  padding: 0.5rem 0.6rem;
+  font-family: inherit;
+}
+
+.agent-chat-input {
+  color: #eef8ff;
+  background: rgba(7, 16, 26, 0.9);
+}
+
+.agent-chat-send {
+  min-width: 5.5rem;
+  color: #111;
+  font-weight: 700;
+  background: linear-gradient(180deg, #f6bd84, #e88e56);
+  cursor: pointer;
+}
+
+.agent-chat-send:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+@media (max-width: 980px) {
+  .tricorder-content {
+    grid-template-columns: 1fr;
+  }
+
+  .tricorder-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.35rem;
+  }
+
+  .panel-nav-button {
+    margin-bottom: 0;
+  }
+
+  .tricorder-alert-stack {
+    position: static;
+    width: 100%;
+    margin-top: 0.2rem;
+  }
+}

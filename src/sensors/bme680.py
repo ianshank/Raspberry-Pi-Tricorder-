@@ -141,7 +141,7 @@ class BME680Sensor(BaseSensor):
             self._record_error(e)
             raise SensorCommunicationError(f"BME680 read failed: {e}") from e
 
-    def calibrate(self, **kwargs) -> bool:
+    def calibrate(self, **kwargs: Any) -> bool:
         self.status = SensorStatus.CALIBRATING
         logger.info("%s calibration triggered (baseline recalc)", self.sensor_id)
         self.status = SensorStatus.READY

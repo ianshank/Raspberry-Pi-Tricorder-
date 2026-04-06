@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tricorder LCARS Interface</title>
+  <link rel="stylesheet" href="./vendor/lcars/lcars.css">
+  <link rel="stylesheet" href="./css/tricorder.css">
+</head>
+<body>
+  <main class="tricorder-shell">
+    <header class="tricorder-header">
+      <div class="lcars-row">
+        <div class="lcars-elbow left-bottom lcars-neon-carrot-bg">
+          <a id="app-title" href="#">TRICORDER</a>
+        </div>
+        <div class="lcars-bar horizontal fill lcars-anakiwa-bg">
+          <span class="lcars-title" id="mode-title">LCARS SCANNER</span>
+          <span class="lcars-title right" id="stardate">STARDATE</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="tricorder-content">
+      <aside class="tricorder-nav" id="panel-nav" aria-label="Panel navigation"></aside>
+      <section class="tricorder-panel-host" id="panel-host" aria-live="polite"></section>
+    </section>
+
+    <section class="tricorder-alert-stack" id="alert-stack" aria-live="assertive" aria-label="Anomaly alerts"></section>
+
+    <footer class="tricorder-footer">
+      <div class="lcars-row">
+        <div class="lcars-bar horizontal left-end decorated lcars-bourbon-bg"></div>
+        <div class="lcars-text-box lcars-u-4-1 centered-right" id="status-indicator">CONNECTING</div>
+        <div class="lcars-bar horizontal fill lcars-bahama-blue-bg">
+          <span class="lcars-title">SENSOR STREAM</span>
+        </div>
+        <div class="lcars-bar horizontal right-end decorated lcars-bourbon-bg"></div>
+      </div>
+    </footer>
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

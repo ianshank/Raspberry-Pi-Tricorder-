@@ -1,6 +1,6 @@
 """MCP tools for anomaly detection operations."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 import logging
 
 import numpy as np
@@ -10,12 +10,12 @@ from models.base import ModelRegistry
 logger = logging.getLogger(__name__)
 
 
-def register_anomaly_tools(registry) -> None:
+def register_anomaly_tools(registry: Any) -> None:
     """Register anomaly detection MCP tools."""
 
     def run_anomaly_scan(
         model_id: str = "anomaly_detector",
-        sensor_data: list = None,
+        sensor_data: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         """Run anomaly detection on provided or buffered sensor data."""
         model = ModelRegistry.get(model_id)

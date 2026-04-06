@@ -163,6 +163,21 @@ class TestToolRegistry:
         with pytest.raises(KeyError):
             await registry.call("nope", {})
 
+    def test_call_sync_helper(self):
+        registry = ToolRegistry()
+        registry.register_function("sync_tool", "sync", {}, lambda: "ok")
+        assert registry.call_sync("sync_tool", {}) == "ok"
+
+    def test_call_sync_rejects_async(self):
+        registry = ToolRegistry()
+
+        async def async_func():
+            return "async_ok"
+
+        registry.register_function("async_tool", "async", {}, async_func)
+        with pytest.raises(RuntimeError):
+            registry.call_sync("async_tool", {})
+
 
 class TestAuthMiddleware:
     def test_health_no_auth_required(self, auth_client):
@@ -180,3 +195,16 @@ class TestAuthMiddleware:
     def test_tools_with_invalid_auth(self, auth_client):
         resp = auth_client.get("/tools", headers={"Authorization": "Bearer wrong-key"})
         assert resp.status_code == 401
+
+    def test_tools_denied_when_auth_enabled_without_key(self):
+        registry = ToolRegistry()
+
+        @registry.register("auth_tool", "Needs auth", {"type": "object", "properties": {}})
+        def auth_tool():
+            return {"secret": "data"}
+
+        app = create_app(config={"auth_enabled": True}, registry=registry)
+        client = TestClient(app)
+
+        resp = client.get("/tools")
+        assert resp.status_code == 503

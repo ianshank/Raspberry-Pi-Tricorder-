@@ -103,6 +103,7 @@ class TestConfigCompat:
         config = load_config(cfg_file)
         assert config.project_name == "Minimal"
         assert config.logging.level == "INFO"  # default
+        assert config.ui.enabled is True
 
 
 @pytest.mark.regression
