@@ -31,6 +31,7 @@ class MLX90640Sensor(BaseSensor):
     DEFAULT_REFRESH_RATE_CMD = [0x09, 0x01]  # 4 Hz refresh rate
     DEFAULT_I2C_CHUNK_SIZE = 32
     DEFAULT_TEMP_SCALE_FACTOR = 0.02
+    DEFAULT_CONFIDENCE = 0.90
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -41,6 +42,7 @@ class MLX90640Sensor(BaseSensor):
         self.refresh_rate_cmd = config.get("refresh_rate_cmd", self.DEFAULT_REFRESH_RATE_CMD)
         self.i2c_chunk_size = config.get("i2c_chunk_size", self.DEFAULT_I2C_CHUNK_SIZE)
         self.temp_scale_factor = config.get("temp_scale_factor", self.DEFAULT_TEMP_SCALE_FACTOR)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
     def initialize(self) -> bool:
         try:
@@ -107,7 +109,7 @@ class MLX90640Sensor(BaseSensor):
                     ),
                 },
                 unit="celsius",
-                confidence=0.90,
+                confidence=self.confidence,
                 metadata={"i2c_address": f"0x{self.address:02X}"},
             )
             self._record_reading(reading)

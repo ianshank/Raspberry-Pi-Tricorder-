@@ -30,6 +30,7 @@ class AS7265xSensor(BaseSensor):
         "control_setup": 0x04,
         "integration_time": 0x05,
         "led_control": 0x07,
+        "calibrated_data_base": 0x08,
     }
     DEFAULT_HW_VERSION = 0x40
     CHANNEL_WAVELENGTHS_NM = [
@@ -39,6 +40,7 @@ class AS7265xSensor(BaseSensor):
     ]
 
     DEFAULT_INTEGRATION_TIME = 50  # ~50ms integration time
+    DEFAULT_CONFIDENCE = 0.92
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -52,6 +54,7 @@ class AS7265xSensor(BaseSensor):
             "wavelengths_nm", self.CHANNEL_WAVELENGTHS_NM
         )
         self.integration_time = config.get("integration_time", self.DEFAULT_INTEGRATION_TIME)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
     def _virtual_read(self, virtual_reg: int) -> int:
         """Read from virtual register via status/write/read interface."""
@@ -90,8 +93,8 @@ class AS7265xSensor(BaseSensor):
             self.status = SensorStatus.READY
             logger.info("%s initialized (HW: 0x%02X)", self.sensor_id, hw_version)
             return True
-        except SensorInitializationError:
-            self._record_error(SensorInitializationError("HW version mismatch"))
+        except SensorInitializationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)
@@ -106,7 +109,7 @@ class AS7265xSensor(BaseSensor):
             for i in range(self.channel_count):
                 # Each channel is 2 bytes (MSB, LSB) from calibrated data registers
                 raw_data = self.adapter.read_i2c_block_data(
-                    self.address, 0x08 + i * 2, 2
+                    self.address, self.registers["calibrated_data_base"] + i * 2, 2
                 )
                 raw_value = (raw_data[0] << 8) | raw_data[1]
                 # Convert to calibrated float (simplified)
@@ -127,7 +130,7 @@ class AS7265xSensor(BaseSensor):
                     "raw_values": channels,
                 },
                 unit="relative_intensity",
-                confidence=0.92,
+                confidence=self.confidence,
                 metadata={"i2c_address": f"0x{self.address:02X}"},
             )
             self._record_reading(reading)

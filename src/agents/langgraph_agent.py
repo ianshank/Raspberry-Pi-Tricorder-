@@ -31,10 +31,6 @@ class Severity(Enum):
         order = [self.LOW, self.MEDIUM, self.HIGH, self.CRITICAL]
         return order.index(self) >= order.index(other)
 
-    def __gt__(self, other: "Severity") -> bool:
-        order = [self.LOW, self.MEDIUM, self.HIGH, self.CRITICAL]
-        return order.index(self) > order.index(other)
-
 
 class AgentState(TypedDict, total=False):
     """State schema for the LangGraph agent."""
@@ -61,6 +57,15 @@ class TricorderAgent:
     - synthesize_report: Generates situation report
     """
 
+    DEFAULT_SEVERITY_THRESHOLDS = {
+        "critical": 0.9,
+        "high": 0.75,
+        "medium": 0.5,
+    }
+    SEVERITY_LEVELS = ("critical", "high", "medium")
+    DEFAULT_MAX_TOOLS_PER_ITERATION = 3
+    DEFAULT_MAX_ITERATIONS = 5
+
     def __init__(self, config: Dict[str, Any], tool_caller: Optional[Any] = None):
         """
         Args:
@@ -76,10 +81,67 @@ class TricorderAgent:
         self.human_in_loop_threshold = Severity.from_string(
             config.get("human_in_loop_threshold", "HIGH")
         )
+        self.severity_thresholds = self._normalize_severity_thresholds(
+            config.get("severity_thresholds")
+        )
+        self.max_tools_per_iteration = self._normalize_positive_int(
+            config.get("max_tools_per_iteration"), self.DEFAULT_MAX_TOOLS_PER_ITERATION
+        )
+        self.max_iterations = self._normalize_positive_int(
+            config.get("max_iterations"), self.DEFAULT_MAX_ITERATIONS
+        )
         self.tool_caller = tool_caller
         self._graph: Any = None
         logger.info("TricorderAgent created: mode=%s, model=%s",
                      self.mission_mode, self.model_name)
+
+    @classmethod
+    def _normalize_severity_thresholds(cls, raw: Any) -> Dict[str, float]:
+        defaults = dict(cls.DEFAULT_SEVERITY_THRESHOLDS)
+        if raw is None:
+            return defaults
+        if not isinstance(raw, dict):
+            logger.warning(
+                "Invalid severity_thresholds type: %s; using defaults", type(raw).__name__
+            )
+            return defaults
+
+        normalized = defaults.copy()
+        try:
+            for level in cls.SEVERITY_LEVELS:
+                if level in raw:
+                    normalized[level] = float(raw[level])
+        except (TypeError, ValueError):
+            logger.warning("Invalid severity_thresholds values; using defaults")
+            return defaults
+
+        if any(not 0.0 <= value <= 1.0 for value in normalized.values()):
+            logger.warning("severity_thresholds values must be in [0.0, 1.0]; using defaults")
+            return defaults
+
+        if not (
+            normalized["critical"] >= normalized["high"] >= normalized["medium"]
+        ):
+            logger.warning(
+                "severity_thresholds must satisfy critical >= high >= medium; using defaults"
+            )
+            return defaults
+
+        return normalized
+
+    @staticmethod
+    def _normalize_positive_int(raw: Any, default: int) -> int:
+        if raw is None:
+            return default
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            logger.warning("Invalid integer config value %r; using default=%d", raw, default)
+            return default
+        if value <= 0:
+            logger.warning("Non-positive integer config value %d; using default=%d", value, default)
+            return default
+        return value
 
     def build_graph(self) -> Any:
         """Build the LangGraph state graph. Requires langgraph package."""
@@ -123,20 +185,14 @@ class TricorderAgent:
         event = event_raw if isinstance(event_raw, dict) else {}
         anomaly_score = event.get("anomaly_score", 0.0)
 
-        # Get configurable severity thresholds (with defensive fallback)
-        thresholds = self.config.get("severity_thresholds", {})
-        high_thresh = thresholds.get("high", 0.9)
-        medium_thresh = thresholds.get("medium", 0.75)
-        low_thresh = thresholds.get("low", 0.5)
-
-        if anomaly_score >= high_thresh:
-            severity = Severity.CRITICAL
-        elif anomaly_score >= medium_thresh:
-            severity = Severity.HIGH
-        elif anomaly_score >= low_thresh:
-            severity = Severity.MEDIUM
-        else:
-            severity = Severity.LOW
+        sorted_thresholds = sorted(
+            self.severity_thresholds.items(), key=lambda item: item[1], reverse=True
+        )
+        severity = Severity.LOW
+        for level, threshold in sorted_thresholds:
+            if anomaly_score >= threshold:
+                severity = Severity.from_string(level)
+                break
 
         logger.info("Anomaly event received: score=%.2f, severity=%s",
                      anomaly_score, severity.value)
@@ -192,7 +248,7 @@ class TricorderAgent:
         planned = state.get("planned_tools", [])
         results = []
 
-        for tool_name in planned[:3]:  # Max 3 per iteration
+        for tool_name in planned[:self.max_tools_per_iteration]:
             if self.tool_caller:
                 try:
                     result = self.tool_caller(tool_name, {})
@@ -213,7 +269,7 @@ class TricorderAgent:
         """Decide whether to continue gathering or synthesize report."""
         iteration = state.get("iteration_count", 0)
         remaining = state.get("planned_tools", [])
-        if remaining and iteration < 5:
+        if remaining and iteration < self.max_iterations:
             return "continue"
         return "synthesize"
 
@@ -303,7 +359,7 @@ class TricorderAgent:
         merge_state(state, self.evidence_gather_node(state))
         merge_state(state, self.plan_tools_node(state))
 
-        for _ in range(5):
+        for _ in range(self.max_iterations):
             merge_state(state, self.execute_tools_node(state))
             decision = self._should_continue(state)
             if decision == "synthesize":

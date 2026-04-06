@@ -43,6 +43,35 @@ class MAX30102Sensor(BaseSensor):
         "intercept": 110,
         "slope": 25,
     }
+    DEFAULT_CONFIDENCE = 0.85
+    DEFAULT_HR_BOUNDS = {"min_bpm": 40, "max_bpm": 200}
+
+    @classmethod
+    def _normalize_hr_bounds(cls, raw: Any) -> Dict[str, float]:
+        if raw is None:
+            return dict(cls.DEFAULT_HR_BOUNDS)
+        if not isinstance(raw, dict):
+            raise ValueError("hr_bounds must be a dictionary")
+
+        bounds: Dict[str, Any] = dict(cls.DEFAULT_HR_BOUNDS)
+        bounds.update(raw)
+
+        min_bpm_raw = bounds.get("min_bpm")
+        max_bpm_raw = bounds.get("max_bpm")
+        if min_bpm_raw is None or max_bpm_raw is None:
+            raise ValueError("hr_bounds must include both min_bpm and max_bpm")
+        try:
+            min_bpm = float(min_bpm_raw)
+            max_bpm = float(max_bpm_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("hr_bounds min_bpm/max_bpm must be numeric") from exc
+
+        if min_bpm <= 0 or max_bpm <= 0:
+            raise ValueError("hr_bounds min_bpm/max_bpm must be positive")
+        if min_bpm >= max_bpm:
+            raise ValueError("hr_bounds must satisfy min_bpm < max_bpm")
+
+        return {"min_bpm": min_bpm, "max_bpm": max_bpm}
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -55,25 +84,8 @@ class MAX30102Sensor(BaseSensor):
         self.sample_rate = config.get("sample_rate", 100)
         self.device_config = config.get("device_config", self.DEFAULT_DEVICE_CONFIG)
         self.spo2_calibration = config.get("spo2_calibration", self.DEFAULT_SPO2_CALIBRATION)
-        
-        # Validate and normalize hr_bounds
-        defaults = {"min_bpm": 40, "max_bpm": 200}
-        self.hr_bounds = {**defaults, **(config.get("hr_bounds") or {})}
-        
-        # Validate bounds
-        min_bpm = self.hr_bounds.get("min_bpm", 40)
-        max_bpm = self.hr_bounds.get("max_bpm", 200)
-        
-        if not isinstance(min_bpm, (int, float)) or not isinstance(max_bpm, (int, float)):
-            raise ValueError(f"HR bounds must be numeric, got min_bpm={min_bpm}, max_bpm={max_bpm}")
-        
-        if min_bpm < 0 or max_bpm < 0:
-            raise ValueError(f"HR bounds must be positive, got min_bpm={min_bpm}, max_bpm={max_bpm}")
-        
-        if min_bpm >= max_bpm:
-            raise ValueError(f"min_bpm ({min_bpm}) must be < max_bpm ({max_bpm})")
-        
-        self.hr_bounds = {"min_bpm": min_bpm, "max_bpm": max_bpm}
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
+        self.hr_bounds = self._normalize_hr_bounds(config.get("hr_bounds"))
 
     def initialize(self) -> bool:
         try:
@@ -117,8 +129,8 @@ class MAX30102Sensor(BaseSensor):
             self.status = SensorStatus.READY
             logger.info("%s initialized (part ID: 0x%02X)", self.sensor_id, part_id)
             return True
-        except SensorInitializationError:
-            self._record_error(SensorInitializationError("part ID mismatch"))
+        except SensorInitializationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)
@@ -158,9 +170,10 @@ class MAX30102Sensor(BaseSensor):
             ratio = avg_red / max(avg_ir, 1)
             spo2_cal = self.spo2_calibration
             spo2_estimate = max(0, min(100, spo2_cal["intercept"] - spo2_cal["slope"] * ratio))
-            min_bpm = self.hr_bounds.get("min_bpm", 40)
-            max_bpm = self.hr_bounds.get("max_bpm", 200)
-            hr_estimate = max(min_bpm, min(max_bpm, len(red_values) * 60 / max(num_samples, 1)))
+            hr_estimate = max(
+                self.hr_bounds["min_bpm"],
+                min(self.hr_bounds["max_bpm"], len(red_values) * 60 / max(num_samples, 1)),
+            )
 
             reading = SensorReading(
                 sensor_id=self.sensor_id,
@@ -173,7 +186,7 @@ class MAX30102Sensor(BaseSensor):
                     "samples_read": len(red_values),
                 },
                 unit="composite",
-                confidence=0.85,
+                confidence=self.confidence,
                 metadata={"i2c_address": f"0x{self.address:02X}"},
             )
             self._record_reading(reading)

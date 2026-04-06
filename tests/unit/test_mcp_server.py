@@ -96,6 +96,7 @@ class TestToolCallEndpoint:
             "arguments": {},
         })
         assert resp.status_code == 404
+        assert resp.json()["detail"] == "Tool not found"
 
     def test_call_error_tool(self, test_client):
         resp = test_client.post("/tools/call", json={
@@ -105,6 +106,7 @@ class TestToolCallEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["isError"] is True
+        assert data["content"]["error"] == "Tool call failed. Check logs for details."
 
     def test_call_default_args(self, test_client):
         resp = test_client.post("/tools/call", json={

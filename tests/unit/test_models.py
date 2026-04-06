@@ -96,6 +96,17 @@ class TestAnomalyDetector:
         history = model.get_anomaly_history(limit=3)
         assert len(history) <= 3
 
+    def test_max_history_is_clamped_to_minimum_one(self, mock_inference_adapter, anomaly_model_config):
+        config = dict(anomaly_model_config)
+        config["max_history"] = 0
+        model = AnomalyDetector("ad_01", mock_inference_adapter, config)
+        model.load()
+        for _ in range(5):
+            input_data = np.random.randn(1, 256, 10).astype(np.float32)
+            model.predict(input_data)
+        assert model.max_history == 1
+        assert len(model.get_anomaly_history(limit=100)) == 1
+
     def test_get_info(self, mock_inference_adapter, anomaly_model_config):
         model = AnomalyDetector("ad_01", mock_inference_adapter, anomaly_model_config)
         model.load()

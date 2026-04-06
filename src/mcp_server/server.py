@@ -7,6 +7,7 @@ All configuration loaded from TricorderConfig — no hardcoded values.
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from datetime import datetime, timezone
 import asyncio
+import hmac
 import hashlib
 import logging
 import math
@@ -485,7 +486,7 @@ def create_app(
                 )
 
             token = request.headers.get("Authorization", "").replace("Bearer ", "")
-            if token != api_key:
+            if not hmac.compare_digest(token, api_key):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Invalid or missing API key"},
@@ -518,13 +519,16 @@ def create_app(
         try:
             result = await reg.call(request.name, request.arguments)
             return ToolCallResponse(content=result, isError=False)
-        except KeyError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except TypeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid arguments: {e}")
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Tool not found")
+        except TypeError:
+            raise HTTPException(status_code=400, detail="Invalid tool arguments")
         except Exception as e:
             logger.error("Tool call %s failed: %s", request.name, e, exc_info=True)
-            return ToolCallResponse(content={"error": str(e)}, isError=True)
+            return ToolCallResponse(
+                content={"error": "Tool call failed. Check logs for details."},
+                isError=True,
+            )
 
     async def _build_anomaly_payload() -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -597,7 +601,7 @@ def create_app(
                 return False
 
             token = websocket.query_params.get("token") or websocket.query_params.get("api_key")
-            if token != api_key:
+            if not token or not hmac.compare_digest(token, api_key):
                 await websocket.close(code=1008)
                 return False
         return True

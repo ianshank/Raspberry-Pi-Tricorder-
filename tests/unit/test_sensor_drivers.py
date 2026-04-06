@@ -161,6 +161,19 @@ class TestMAX30102Sensor:
         with pytest.raises(SensorCommunicationError):
             sensor.read()
 
+    def test_partial_hr_bounds_override_merges_defaults(self, mock_i2c_max30102, max30102_config):
+        config = dict(max30102_config)
+        config["hr_bounds"] = {"max_bpm": 180}
+        sensor = MAX30102Sensor("hr_01", mock_i2c_max30102, config)
+        assert sensor.hr_bounds["min_bpm"] == 40.0
+        assert sensor.hr_bounds["max_bpm"] == 180.0
+
+    def test_invalid_hr_bounds_rejected(self, mock_i2c_max30102, max30102_config):
+        config = dict(max30102_config)
+        config["hr_bounds"] = {"min_bpm": 200, "max_bpm": 100}
+        with pytest.raises(ValueError, match="min_bpm < max_bpm"):
+            MAX30102Sensor("hr_01", mock_i2c_max30102, config)
+
 
 # ========== ADS1263 ==========
 

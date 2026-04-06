@@ -155,8 +155,11 @@ class LangGraphAgentConfig(BaseModel):
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
     severity_thresholds: Dict[str, float] = Field(
-        default_factory=lambda: {"low": 0.5, "medium": 0.75, "high": 0.9}
+        default_factory=lambda: {"critical": 0.9, "high": 0.75, "medium": 0.5},
+        description="Anomaly score thresholds for severity classification",
     )
+    max_tools_per_iteration: int = Field(default=3, gt=0, le=20)
+    max_iterations: int = Field(default=5, gt=0, le=50)
 
     @field_validator('mission_mode')
     @classmethod
@@ -174,30 +177,45 @@ class LangGraphAgentConfig(BaseModel):
             raise ValueError(f"Threshold must be one of {valid}, got {v}")
         return v
 
-    @field_validator('severity_thresholds', mode='after')
+    @field_validator('severity_thresholds', mode='before')
     @classmethod
-    def validate_severity_thresholds(cls, v: Dict[str, float]) -> Dict[str, float]:
-        """Normalize severity_thresholds: merge with defaults, validate ordering."""
-        defaults = {"low": 0.5, "medium": 0.75, "high": 0.9}
-        merged = {**defaults, **v}
-        
-        # Ensure all required keys are present
-        required_keys = {"low", "medium", "high"}
-        if not all(k in merged for k in required_keys):
-            raise ValueError(f"severity_thresholds must contain {required_keys}, got {set(merged.keys())}")
-        
-        # Validate ordering: low <= medium <= high
-        low = merged["low"]
-        medium = merged["medium"]
-        high = merged["high"]
-        
-        if not (0.0 <= low <= medium <= high <= 1.0):
+    def validate_severity_thresholds(cls, v: Any) -> Dict[str, float]:
+        defaults = {"critical": 0.9, "high": 0.75, "medium": 0.5}
+        if v is None:
+            return defaults.copy()
+        if not isinstance(v, dict):
+            raise ValueError("severity_thresholds must be a dictionary")
+
+        allowed_keys = set(defaults)
+        unknown_keys = set(v) - allowed_keys
+        if unknown_keys:
             raise ValueError(
-                f"Severity thresholds must satisfy: 0 <= low <= medium <= high <= 1, "
-                f"got low={low}, medium={medium}, high={high}"
+                "severity_thresholds contains unknown key(s): "
+                f"{sorted(unknown_keys)}. Allowed keys are: {sorted(allowed_keys)}"
             )
-        
-        return merged
+        merged = defaults.copy()
+        merged.update(v)
+
+        normalized: Dict[str, float] = {}
+        for key in defaults:
+            try:
+                value = float(merged[key])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"severity_thresholds[{key!r}] must be a float between 0.0 and 1.0"
+                ) from exc
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"severity_thresholds[{key!r}] must be between 0.0 and 1.0, got {value}"
+                )
+            normalized[key] = value
+
+        if not (
+            normalized["critical"] >= normalized["high"] >= normalized["medium"]
+        ):
+            raise ValueError("severity_thresholds must satisfy critical >= high >= medium")
+
+        return normalized
 
 
 class RAGConfig(BaseModel):
@@ -441,11 +459,3 @@ def _apply_env_overrides(config: Dict[str, Any], prefix: str = "TRICORDER") -> D
             logger.debug(f"Applied env override: {env_key}")
 
     return config
-
-
-def save_config(config: TricorderConfig, output_path: Path) -> None:
-    """Save configuration to YAML file."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, 'w') as f:
-        yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
-    logger.info(f"Configuration saved to {output_path}")
