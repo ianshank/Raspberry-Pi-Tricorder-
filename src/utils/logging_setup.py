@@ -80,7 +80,7 @@ def setup_logging(config: "LoggingConfig") -> None:
         root_logger.addHandler(file_handler)
 
     # --- structlog configuration ---
-    json_format = getattr(config, "json_format", False)
+    json_format = config.json_format
 
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -114,7 +114,14 @@ def setup_logging(config: "LoggingConfig") -> None:
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             renderer,
         ],
+        foreign_pre_chain=shared_processors,
     )
     console_handler.setFormatter(structlog_formatter)
+
+    # Apply structlog formatter to file handler when JSON format is enabled
+    if json_format and config.file_path:
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.handlers.RotatingFileHandler):
+                handler.setFormatter(structlog_formatter)
 
     logging.getLogger(__name__).debug("Logging configured: level=%s json=%s", config.level, json_format)

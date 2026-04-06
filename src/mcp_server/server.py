@@ -196,7 +196,7 @@ def _severity_from_score(
     """
     if score is None:
         return "UNKNOWN"
-    t = thresholds or {"critical": 0.9, "high": 0.75, "medium": 0.5}
+    t = thresholds if isinstance(thresholds, dict) else {"critical": 0.9, "high": 0.75, "medium": 0.5}
     if score >= t.get("critical", 0.9):
         return "CRITICAL"
     if score >= t.get("high", 0.75):

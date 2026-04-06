@@ -129,7 +129,7 @@ def validate_model_input(data: np.ndarray, name: str = "input") -> np.ndarray:
     Raises:
         ModelInferenceError: If *data* contains NaN or infinite values.
     """
-    if np.any(np.isnan(data)) or np.any(np.isinf(data)):
+    if not np.all(np.isfinite(data)):
         raise ModelInferenceError(
             f"Invalid {name}: contains NaN or infinite values"
         )

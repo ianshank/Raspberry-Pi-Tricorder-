@@ -183,7 +183,6 @@ logging:
   json_format: false
 
 feature_flags:
-  structured_logging: false
   anomaly_ack: true
   agent_chat: true
   mqtt_publishing: true

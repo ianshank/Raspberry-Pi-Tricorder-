@@ -382,7 +382,6 @@ class LoggingConfig(BaseModel):
 
 class FeatureFlagsConfig(BaseModel):
     """Feature flags for toggling capabilities at runtime."""
-    structured_logging: bool = Field(default=False, description="Enable JSON structured logging")
     anomaly_ack: bool = Field(default=True, description="Enable anomaly acknowledgment endpoint")
     agent_chat: bool = Field(default=True, description="Enable agent chat endpoint")
     mqtt_publishing: bool = Field(default=True, description="Enable MQTT event publishing")

@@ -95,14 +95,12 @@ class TestFeatureFlags:
 
     def test_defaults(self):
         flags = FeatureFlagsConfig()
-        assert flags.structured_logging is False
         assert flags.anomaly_ack is True
         assert flags.agent_chat is True
         assert flags.mqtt_publishing is True
 
     def test_override(self):
-        flags = FeatureFlagsConfig(structured_logging=True, mqtt_publishing=False)
-        assert flags.structured_logging is True
+        flags = FeatureFlagsConfig(mqtt_publishing=False)
         assert flags.mqtt_publishing is False
 
     def test_root_config_includes_flags(self):
@@ -116,13 +114,11 @@ class TestFeatureFlags:
         yaml_content = """
 environment: "development"
 feature_flags:
-  structured_logging: true
   mqtt_publishing: false
 """
         config_file = tmp_path / "test.yaml"
         config_file.write_text(yaml_content)
         cfg = load_config(config_file)
-        assert cfg.feature_flags.structured_logging is True
         assert cfg.feature_flags.mqtt_publishing is False
         # Defaults preserved for unspecified flags
         assert cfg.feature_flags.anomaly_ack is True
