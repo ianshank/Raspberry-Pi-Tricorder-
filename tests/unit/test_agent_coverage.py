@@ -8,6 +8,15 @@ from agents.langgraph_agent import (
 )
 
 
+def _force_standalone_build(agent: TricorderAgent) -> None:
+    """Build graph in standalone mode regardless of langgraph availability.
+
+    Unit tests for the sequential fallback path must not depend on
+    whether langgraph is installed (it may be in CI).
+    """
+    agent._build_standalone_graph()
+
+
 class TestNormalizeSeverityThresholds:
     """Covers lines 129-143 in langgraph_agent.py."""
 
@@ -113,7 +122,7 @@ class TestAgentRunTimeout:
 
         # Tool caller always returns empty result → agent never synthesizes
         agent = TricorderAgent(config=config, tool_caller=Mock(return_value={}))
-        agent.build_graph()
+        _force_standalone_build(agent)
 
         event = {
             "anomaly_score": 0.85,
@@ -130,7 +139,7 @@ class TestAgentRunTimeout:
     def test_successful_run_no_timeout(self, agent_config):
         """Normal run completes without setting _timeout."""
         agent = TricorderAgent(config=agent_config, tool_caller=Mock(return_value={}))
-        agent.build_graph()
+        _force_standalone_build(agent)
         event = {"anomaly_score": 0.5, "affected_sensors": []}
         result = agent.run(event)
         assert "_timeout" not in result
@@ -143,7 +152,7 @@ class TestMergeStateNonListExisting:
     def test_merge_handles_non_list_messages(self, agent_config):
         """If existing state has a corrupted (non-list) messages field, it resets."""
         agent = TricorderAgent(config=agent_config, tool_caller=Mock(return_value={}))
-        agent.build_graph()
+        _force_standalone_build(agent)
 
         # Build initial state with corrupted messages field
         from agents.langgraph_agent import AgentState
