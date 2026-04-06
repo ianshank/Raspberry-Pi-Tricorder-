@@ -186,6 +186,13 @@ class LangGraphAgentConfig(BaseModel):
         if not isinstance(v, dict):
             raise ValueError("severity_thresholds must be a dictionary")
 
+        allowed_keys = set(defaults)
+        unknown_keys = set(v) - allowed_keys
+        if unknown_keys:
+            raise ValueError(
+                "severity_thresholds contains unknown key(s): "
+                f"{sorted(unknown_keys)}. Allowed keys are: {sorted(allowed_keys)}"
+            )
         merged = defaults.copy()
         merged.update(v)
 
