@@ -30,6 +30,8 @@ class TFMiniSSensor(BaseSensor):
         "divisor": 8.0,
         "offset": 256.0,
     }
+    DEFAULT_CONFIDENCE = 0.95
+    LOW_CONFIDENCE = 0.3
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -39,6 +41,8 @@ class TFMiniSSensor(BaseSensor):
         self.min_range_cm = config.get("min_range_cm", 10)
         self.commands = config.get("commands", self.DEFAULT_COMMANDS)
         self.temp_conversion = config.get("temp_conversion", self.DEFAULT_TEMP_CONVERSION)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
+        self.low_confidence = config.get("low_confidence", self.LOW_CONFIDENCE)
 
     def _parse_frame(self, data: bytes) -> Optional[Dict[str, Any]]:
         """Parse a TFmini-S 9-byte data frame."""
@@ -102,7 +106,7 @@ class TFMiniSSensor(BaseSensor):
             if parsed is None:
                 raise SensorCommunicationError("Invalid frame from TFmini-S")
 
-            confidence = 0.95 if parsed["valid"] else 0.3
+            confidence = self.confidence if parsed["valid"] else self.low_confidence
 
             reading = SensorReading(
                 sensor_id=self.sensor_id,
@@ -114,8 +118,8 @@ class TFMiniSSensor(BaseSensor):
             )
             self._record_reading(reading)
             return reading
-        except SensorCommunicationError:
-            self._record_error(SensorCommunicationError("read failed"))
+        except SensorCommunicationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)

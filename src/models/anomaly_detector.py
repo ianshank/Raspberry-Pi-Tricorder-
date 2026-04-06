@@ -22,12 +22,15 @@ class AnomalyDetector(BaseModel):
     reconstruction error against learned normal patterns.
     """
 
+    DEFAULT_MAX_HISTORY = 1000
+
     def __init__(self, model_id: str, adapter: InferenceAdapter, config: Dict[str, Any]):
         super().__init__(model_id, adapter, config)
         self.window_size = config.get("window_size", 256)
         self.confidence_threshold = config.get("confidence_threshold", 0.75)
         self.input_shape = config.get("input_shape", [1, 256, 10])
         self.output_shape = config.get("output_shape", [1, 10])
+        self.max_history = config.get("max_history", self.DEFAULT_MAX_HISTORY)
         self._baseline_mse: float = 0.0
         self._anomaly_history: list = []
 
@@ -87,9 +90,8 @@ class AnomalyDetector(BaseModel):
                 "is_anomaly": is_anomaly,
             }
             self._anomaly_history.append(result_entry)
-            # Keep last 1000 entries
-            if len(self._anomaly_history) > 1000:
-                self._anomaly_history = self._anomaly_history[-1000:]
+            if len(self._anomaly_history) > self.max_history:
+                self._anomaly_history = self._anomaly_history[-self.max_history:]
 
             return ModelResult(
                 output={

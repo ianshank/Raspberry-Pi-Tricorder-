@@ -41,6 +41,7 @@ class BME680Sensor(BaseSensor):
         "humidity": 0x01,       # 1x oversampling
         "temp_pressure": 0x25,  # temp 1x, pressure 1x, forced mode
     }
+    DEFAULT_CONFIDENCE = 0.95
     DEFAULT_CALIBRATION = {
         "temp_divisor": 16384.0,
         "temp_scale": 40.0,
@@ -60,6 +61,7 @@ class BME680Sensor(BaseSensor):
         self.expected_chip_id = config.get("expected_chip_id", self.DEFAULT_EXPECTED_CHIP_ID)
         self.oversampling = config.get("oversampling", self.DEFAULT_OVERSAMPLING)
         self.calibration = config.get("calibration", self.DEFAULT_CALIBRATION)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
     def initialize(self) -> bool:
         try:
@@ -84,8 +86,8 @@ class BME680Sensor(BaseSensor):
             self.status = SensorStatus.READY
             logger.info("%s initialized successfully", self.sensor_id)
             return True
-        except SensorInitializationError:
-            self._record_error(SensorInitializationError("chip ID mismatch"))
+        except SensorInitializationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)
@@ -130,7 +132,7 @@ class BME680Sensor(BaseSensor):
                     "gas_resistance_ohm": gas_resistance_ohm,
                 },
                 unit="composite",
-                confidence=0.95,
+                confidence=self.confidence,
                 metadata={"i2c_address": f"0x{self.address:02X}"},
             )
             self._record_reading(reading)

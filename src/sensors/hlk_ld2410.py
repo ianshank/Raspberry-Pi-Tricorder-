@@ -32,6 +32,7 @@ class HLKLD2410Sensor(BaseSensor):
         "max_still_gate": 8,
         "timeout_s": 5,
     }
+    DEFAULT_CONFIDENCE = 0.88
     DEFAULT_COMMAND_WORDS = {
         "enable_config": 0x00FF,
         "read_firmware": 0x0000,
@@ -45,6 +46,7 @@ class HLKLD2410Sensor(BaseSensor):
         self.max_gate = config.get("max_gate", self.DEFAULT_CONFIG["max_gate"])
         self.timeout = config.get("timeout_s", self.DEFAULT_CONFIG["timeout_s"])
         self.command_words = config.get("command_words", self.DEFAULT_COMMAND_WORDS)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
     def _send_command(self, cmd_word: int, data: bytes = b'') -> Optional[bytes]:
         """Send command frame and read response."""
@@ -115,8 +117,8 @@ class HLKLD2410Sensor(BaseSensor):
             self.status = SensorStatus.READY
             logger.info("%s initialized", self.sensor_id)
             return True
-        except SensorInitializationError:
-            self._record_error(SensorInitializationError("init failed"))
+        except SensorInitializationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)
@@ -140,13 +142,13 @@ class HLKLD2410Sensor(BaseSensor):
                 timestamp=datetime.now(timezone.utc),
                 value=parsed,
                 unit="composite",
-                confidence=0.88,
+                confidence=self.confidence,
                 metadata={"port": self.port},
             )
             self._record_reading(reading)
             return reading
-        except SensorCommunicationError:
-            self._record_error(SensorCommunicationError("read failed"))
+        except SensorCommunicationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)

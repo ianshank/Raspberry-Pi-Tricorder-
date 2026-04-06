@@ -42,6 +42,7 @@ class ADS1263Sensor(BaseSensor):
     }
     DEFAULT_EXPECTED_ID = 0x01
     VREF = 2.5  # Internal reference voltage
+    DEFAULT_CONFIDENCE = 0.98
     DEFAULT_INIT_CONFIG = {
         "ref_value": 0x19,    # Internal reference enabled
         "filter_value": 0x04,  # Sinc1 filter, 20 SPS
@@ -59,6 +60,7 @@ class ADS1263Sensor(BaseSensor):
         self.vref = config.get("vref", self.VREF)
         self.channels = config.get("channels", {})
         self.init_config = config.get("init_config", self.DEFAULT_INIT_CONFIG)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
     def _read_register(self, reg: int) -> int:
         cmd = [self.commands["rreg"] | reg, 0x00, 0x00]
@@ -94,8 +96,8 @@ class ADS1263Sensor(BaseSensor):
             self.status = SensorStatus.READY
             logger.info("%s initialized (ID: 0x%02X)", self.sensor_id, device_id)
             return True
-        except SensorInitializationError:
-            self._record_error(SensorInitializationError("ID mismatch"))
+        except SensorInitializationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)
@@ -148,7 +150,7 @@ class ADS1263Sensor(BaseSensor):
                     "vref": self.vref,
                 },
                 unit="volts",
-                confidence=0.98,
+                confidence=self.confidence,
                 metadata={"spi_bus": self.bus, "spi_device": self.device},
             )
             self._record_reading(reading)

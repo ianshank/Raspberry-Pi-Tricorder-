@@ -110,6 +110,7 @@ class TestAnomalyTools:
         # Create and register mock anomaly model
         mock_model = Mock()
         mock_model.config = {"input_shape": [1, 4, 2]}
+        mock_model.input_shape = [1, 4, 2]
         mock_model.predict.return_value = Mock(
             to_dict=Mock(return_value={
                 "output": {"anomaly_score": 0.3, "is_anomaly": False},

@@ -43,6 +43,8 @@ class MAX30102Sensor(BaseSensor):
         "intercept": 110,
         "slope": 25,
     }
+    DEFAULT_CONFIDENCE = 0.85
+    DEFAULT_HR_BOUNDS = {"min_bpm": 40, "max_bpm": 200}
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
@@ -55,6 +57,8 @@ class MAX30102Sensor(BaseSensor):
         self.sample_rate = config.get("sample_rate", 100)
         self.device_config = config.get("device_config", self.DEFAULT_DEVICE_CONFIG)
         self.spo2_calibration = config.get("spo2_calibration", self.DEFAULT_SPO2_CALIBRATION)
+        self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
+        self.hr_bounds = config.get("hr_bounds", self.DEFAULT_HR_BOUNDS)
 
     def initialize(self) -> bool:
         try:
@@ -98,8 +102,8 @@ class MAX30102Sensor(BaseSensor):
             self.status = SensorStatus.READY
             logger.info("%s initialized (part ID: 0x%02X)", self.sensor_id, part_id)
             return True
-        except SensorInitializationError:
-            self._record_error(SensorInitializationError("part ID mismatch"))
+        except SensorInitializationError as e:
+            self._record_error(e)
             raise
         except Exception as e:
             self._record_error(e)
@@ -139,7 +143,10 @@ class MAX30102Sensor(BaseSensor):
             ratio = avg_red / max(avg_ir, 1)
             spo2_cal = self.spo2_calibration
             spo2_estimate = max(0, min(100, spo2_cal["intercept"] - spo2_cal["slope"] * ratio))
-            hr_estimate = max(40, min(200, len(red_values) * 60 / max(num_samples, 1)))
+            hr_estimate = max(
+                self.hr_bounds["min_bpm"],
+                min(self.hr_bounds["max_bpm"], len(red_values) * 60 / max(num_samples, 1)),
+            )
 
             reading = SensorReading(
                 sensor_id=self.sensor_id,
@@ -152,7 +159,7 @@ class MAX30102Sensor(BaseSensor):
                     "samples_read": len(red_values),
                 },
                 unit="composite",
-                confidence=0.85,
+                confidence=self.confidence,
                 metadata={"i2c_address": f"0x{self.address:02X}"},
             )
             self._record_reading(reading)

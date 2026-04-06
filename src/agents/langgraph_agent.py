@@ -31,9 +31,6 @@ class Severity(Enum):
         order = [self.LOW, self.MEDIUM, self.HIGH, self.CRITICAL]
         return order.index(self) >= order.index(other)
 
-    def __gt__(self, other):
-        order = [self.LOW, self.MEDIUM, self.HIGH, self.CRITICAL]
-        return order.index(self) > order.index(other)
 
 
 class AgentState(TypedDict, total=False):
@@ -61,6 +58,14 @@ class TricorderAgent:
     - synthesize_report: Generates situation report
     """
 
+    DEFAULT_SEVERITY_THRESHOLDS = {
+        "critical": 0.9,
+        "high": 0.75,
+        "medium": 0.5,
+    }
+    DEFAULT_MAX_TOOLS_PER_ITERATION = 3
+    DEFAULT_MAX_ITERATIONS = 5
+
     def __init__(self, config: Dict[str, Any], tool_caller: Optional[Any] = None):
         """
         Args:
@@ -75,6 +80,15 @@ class TricorderAgent:
         self.mission_mode = config.get("mission_mode", "patrol")
         self.human_in_loop_threshold = Severity.from_string(
             config.get("human_in_loop_threshold", "HIGH")
+        )
+        self.severity_thresholds = config.get(
+            "severity_thresholds", self.DEFAULT_SEVERITY_THRESHOLDS
+        )
+        self.max_tools_per_iteration = config.get(
+            "max_tools_per_iteration", self.DEFAULT_MAX_TOOLS_PER_ITERATION
+        )
+        self.max_iterations = config.get(
+            "max_iterations", self.DEFAULT_MAX_ITERATIONS
         )
         self.tool_caller = tool_caller
         self._graph = None
@@ -122,11 +136,12 @@ class TricorderAgent:
         event = state.get("anomaly_event", {})
         anomaly_score = event.get("anomaly_score", 0.0)
 
-        if anomaly_score >= 0.9:
+        thresholds = self.severity_thresholds
+        if anomaly_score >= thresholds["critical"]:
             severity = Severity.CRITICAL
-        elif anomaly_score >= 0.75:
+        elif anomaly_score >= thresholds["high"]:
             severity = Severity.HIGH
-        elif anomaly_score >= 0.5:
+        elif anomaly_score >= thresholds["medium"]:
             severity = Severity.MEDIUM
         else:
             severity = Severity.LOW
@@ -184,7 +199,7 @@ class TricorderAgent:
         planned = state.get("planned_tools", [])
         results = []
 
-        for tool_name in planned[:3]:  # Max 3 per iteration
+        for tool_name in planned[:self.max_tools_per_iteration]:
             if self.tool_caller:
                 try:
                     result = self.tool_caller(tool_name, {})
@@ -205,7 +220,7 @@ class TricorderAgent:
         """Decide whether to continue gathering or synthesize report."""
         iteration = state.get("iteration_count", 0)
         remaining = state.get("planned_tools", [])
-        if remaining and iteration < 5:
+        if remaining and iteration < self.max_iterations:
             return "continue"
         return "synthesize"
 
@@ -291,7 +306,7 @@ class TricorderAgent:
         merge_state(state, self.evidence_gather_node(state))
         merge_state(state, self.plan_tools_node(state))
 
-        for _ in range(5):
+        for _ in range(self.max_iterations):
             merge_state(state, self.execute_tools_node(state))
             decision = self._should_continue(state)
             if decision == "synthesize":

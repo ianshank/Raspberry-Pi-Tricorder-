@@ -27,8 +27,7 @@ def register_anomaly_tools(registry) -> None:
                 input_array = np.array(sensor_data, dtype=np.float32)
             else:
                 # Generate zero input as placeholder when no data provided
-                input_shape = model.config.get("input_shape", [1, 256, 10])
-                input_array = np.zeros(input_shape, dtype=np.float32)
+                input_array = np.zeros(model.input_shape, dtype=np.float32)
 
             result = model.predict(input_array)
             return result.to_dict()

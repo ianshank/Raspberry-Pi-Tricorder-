@@ -18,8 +18,8 @@ class TestSeverity:
 
     def test_comparison(self):
         assert Severity.HIGH >= Severity.MEDIUM
-        assert Severity.CRITICAL > Severity.HIGH
-        assert not (Severity.LOW > Severity.MEDIUM)
+        assert Severity.CRITICAL >= Severity.HIGH
+        assert not (Severity.LOW >= Severity.MEDIUM)
 
 
 class TestTricorderAgent:

@@ -117,6 +117,12 @@ class LangGraphAgentConfig(BaseModel):
     checkpoint_db_path: str = Field(default="data/agent_checkpoints.db")
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
+    severity_thresholds: Dict[str, float] = Field(
+        default={"critical": 0.9, "high": 0.75, "medium": 0.5},
+        description="Anomaly score thresholds for severity classification",
+    )
+    max_tools_per_iteration: int = Field(default=3, gt=0, le=20)
+    max_iterations: int = Field(default=5, gt=0, le=50)
 
     @field_validator('mission_mode')
     @classmethod
@@ -249,11 +255,3 @@ def _apply_env_overrides(config: Dict[str, Any], prefix: str = "TRICORDER") -> D
             logger.debug(f"Applied env override: {env_key}")
 
     return config
-
-
-def save_config(config: TricorderConfig, output_path: Path) -> None:
-    """Save configuration to YAML file."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, 'w') as f:
-        yaml.dump(config.model_dump(), f, default_flow_style=False, sort_keys=False)
-    logger.info(f"Configuration saved to {output_path}")

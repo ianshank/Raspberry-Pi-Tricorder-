@@ -6,7 +6,7 @@ from utils.config import (
     TricorderConfig, I2CDeviceConfig, SPIDeviceConfig, UARTDeviceConfig,
     ADCChannelConfig, SensorConfig, ModelConfig, MCPServerConfig,
     LangGraphAgentConfig, LoggingConfig,
-    load_config, _apply_env_overrides, save_config,
+    load_config, _apply_env_overrides,
 )
 
 
@@ -113,6 +113,22 @@ class TestLangGraphAgentConfig:
         with pytest.raises(ValueError):
             LangGraphAgentConfig(human_in_loop_threshold="SUPER")
 
+    def test_severity_thresholds_default(self):
+        config = LangGraphAgentConfig()
+        assert config.severity_thresholds == {"critical": 0.9, "high": 0.75, "medium": 0.5}
+
+    def test_severity_thresholds_override(self):
+        config = LangGraphAgentConfig(severity_thresholds={"critical": 0.95, "high": 0.8, "medium": 0.6})
+        assert config.severity_thresholds["critical"] == 0.95
+
+    def test_max_tools_per_iteration_default(self):
+        config = LangGraphAgentConfig()
+        assert config.max_tools_per_iteration == 3
+
+    def test_max_iterations_default(self):
+        config = LangGraphAgentConfig()
+        assert config.max_iterations == 5
+
 
 class TestLoggingConfig:
     def test_defaults(self):
@@ -198,14 +214,3 @@ class TestEnvOverrides:
         config_dict = {"logging": {"level": "INFO"}}
         result = _apply_env_overrides(config_dict, prefix="TRICORDER")
         assert result["logging"]["level"] == "INFO"
-
-
-class TestSaveConfig:
-    def test_save_and_reload(self, tmp_path):
-        config = TricorderConfig(project_name="Save Test")
-        output_path = tmp_path / "saved.yaml"
-        save_config(config, output_path)
-
-        assert output_path.exists()
-        loaded = load_config(output_path)
-        assert loaded.project_name == "Save Test"
