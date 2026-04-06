@@ -224,9 +224,9 @@ class TestEnvOverrides:
 
     def test_string_value_override(self, monkeypatch):
         config_dict = {"agent": {}}
-        monkeypatch.setenv("TRICORDER__AGENT__MODEL", "llama3:8b")
+        monkeypatch.setenv("TRICORDER__AGENT__MODEL_NAME", "llama3:8b")
         result = _apply_env_overrides(config_dict, prefix="TRICORDER")
-        assert result["agent"]["model"] == "llama3:8b"
+        assert result["agent"]["model_name"] == "llama3:8b"
 
     def test_no_matching_env(self):
         config_dict = {"logging": {"level": "INFO"}}

@@ -43,7 +43,11 @@ def register_anomaly_tools(
         max_sensor_data_items: Upper bound on sensor_data array length.
     """
     effective_limit = max_sensor_data_items
-    if not isinstance(effective_limit, int) or effective_limit < 1:
+    if (
+        isinstance(effective_limit, bool)
+        or not isinstance(effective_limit, int)
+        or effective_limit < 1
+    ):
         logger.warning(
             "Invalid max_sensor_data_items=%r; falling back to default %d",
             max_sensor_data_items,
@@ -62,6 +66,8 @@ def register_anomaly_tools(
 
         try:
             if sensor_data is not None:
+                if not isinstance(sensor_data, (list, tuple)):
+                    return {"error": "sensor_data must be a list or tuple"}
                 if _exceeds_total_item_limit(sensor_data, effective_limit):
                     return {
                         "error": (
