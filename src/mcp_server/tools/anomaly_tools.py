@@ -66,6 +66,8 @@ def register_anomaly_tools(registry: Any) -> None:
             "properties": {
                 "model_id": {
                     "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
                     "description": "Anomaly model ID",
                     "default": "anomaly_detector",
                 },
@@ -104,7 +106,12 @@ def register_anomaly_tools(registry: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "model_id": {"type": "string", "default": "anomaly_detector"},
+                "model_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "default": "anomaly_detector",
+                },
                 "limit": {"type": "integer", "default": 100, "minimum": 1, "maximum": 1000},
             },
         },

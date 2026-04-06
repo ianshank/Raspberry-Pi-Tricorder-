@@ -519,13 +519,16 @@ def create_app(
         try:
             result = await reg.call(request.name, request.arguments)
             return ToolCallResponse(content=result, isError=False)
-        except KeyError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except TypeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid arguments: {e}")
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Tool not found")
+        except TypeError:
+            raise HTTPException(status_code=400, detail="Invalid tool arguments")
         except Exception as e:
             logger.error("Tool call %s failed: %s", request.name, e, exc_info=True)
-            return ToolCallResponse(content={"error": str(e)}, isError=True)
+            return ToolCallResponse(
+                content={"error": "Tool call failed. Check logs for details."},
+                isError=True,
+            )
 
     async def _build_anomaly_payload() -> Dict[str, Any]:
         payload: Dict[str, Any] = {

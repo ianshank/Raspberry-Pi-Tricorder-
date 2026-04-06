@@ -36,7 +36,12 @@ def register_sensor_tools(registry, sensor_manager: SensorManager) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "sensor_id": {"type": "string", "description": "Unique sensor identifier"}
+                "sensor_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "Unique sensor identifier",
+                }
             },
             "required": ["sensor_id"],
         },
@@ -86,6 +91,8 @@ def register_sensor_tools(registry, sensor_manager: SensorManager) -> None:
             "properties": {
                 "sensor_id": {
                     "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
                     "description": "Optional sensor ID. If omitted, returns all diagnostics.",
                 }
             },
@@ -111,7 +118,12 @@ def register_sensor_tools(registry, sensor_manager: SensorManager) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "sensor_id": {"type": "string", "description": "Sensor to calibrate"}
+                "sensor_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "Sensor to calibrate",
+                }
             },
             "required": ["sensor_id"],
         },
