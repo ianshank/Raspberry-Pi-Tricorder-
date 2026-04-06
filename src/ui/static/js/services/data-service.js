@@ -30,6 +30,7 @@ export class DataService {
       DEFAULT_RECONNECT_MAX_MS,
     );
 
+    this._currentStatus = "DISCONNECTED";
     this.statusListeners = new Set();
     this.anomalyStatusListeners = new Set();
     this.readingListeners = new Set();
@@ -197,6 +198,10 @@ export class DataService {
   }
 
   _emitStatus(status) {
+    if (status === "CONNECTING" && this._currentStatus === "CONNECTED") {
+      return;
+    }
+    this._currentStatus = status;
     for (const listener of this.statusListeners) {
       listener(status);
     }

@@ -26,15 +26,14 @@ export class EnvPanel extends BasePanel {
       const spectralChannels = asRecord(value.spectral_channels);
       const entries = Object.entries(spectralChannels)
         .filter(([, channelValue]) => typeof channelValue === "number")
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
+        .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
         .map(([label, channelValue]) => ({ label, value: channelValue }));
 
       if (entries.length > 0) {
         const maxValue = Math.max(...entries.map((entry) => entry.value), 1);
         cardBody.appendChild(createBars(entries, maxValue));
       } else {
-        cardBody.appendChild(createMetricList([{ label: "SPECTRAL", value: "NO DATA" }]));
+        cardBody.appendChild(createMetricList([{ label: "SPECTRAL", value: "N/A" }]));
       }
       return;
     }
@@ -49,7 +48,7 @@ export class EnvPanel extends BasePanel {
         const maxValue = Math.max(...entries.map((entry) => Math.abs(entry.value)), 0.001);
         cardBody.appendChild(createBars(entries, maxValue));
       } else {
-        cardBody.appendChild(createMetricList([{ label: "ADC", value: "NO CHANNEL DATA" }]));
+        cardBody.appendChild(createMetricList([{ label: "ADC", value: "N/A" }]));
       }
       return;
     }

@@ -37,6 +37,9 @@ export class BioPanel extends BasePanel {
       if (sampled.length > 0) {
         const maxTemp = Math.max(...sampled.map((item) => item.value), 1);
         cardBody.appendChild(createBars(sampled, maxTemp));
+        if (frame.length < 768) {
+          cardBody.appendChild(createElement("p", "sensor-note", `SHOWING ${sampled.length} OF 768 THERMAL PIXELS`));
+        }
       } else {
         cardBody.appendChild(createElement("p", "", `THERMAL FRAME: ${formatValue(frame.length)} VALUES`));
       }

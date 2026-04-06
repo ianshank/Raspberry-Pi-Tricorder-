@@ -11,12 +11,18 @@ import hmac
 import hashlib
 import logging
 import math
+import random
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+from mcp_server.tools.anomaly_tools import register_anomaly_tools
+from mcp_server.tools.sensor_tools import register_sensor_tools
+from sensors.base import BaseSensor, SensorReading, SensorStatus
+from sensors.manager import SensorManager
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +165,172 @@ def _display_label(sensor_id: str) -> str:
     return sensor_id.replace("_", " ").replace("-", " ").upper()
 
 
+def _iter_enabled_sensor_ids(sensors_config: Dict[str, Any]) -> List[str]:
+    sensor_ids: List[str] = []
+    for group_name in ("i2c_devices", "spi_devices", "uart_devices"):
+        group = sensors_config.get(group_name, {})
+        if not isinstance(group, dict):
+            continue
+        for sensor_id, raw_cfg in group.items():
+            if not isinstance(sensor_id, str):
+                continue
+            sensor_cfg = raw_cfg if isinstance(raw_cfg, dict) else {}
+            if sensor_cfg.get("enabled", True):
+                sensor_ids.append(sensor_id)
+    return sensor_ids
+
+
+def _build_simulated_sensor_value(sensor_id: str, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+    sensor_key = sensor_id.lower()
+
+    if "bme680" in sensor_key:
+        return {
+            "temperature_c": round(random.uniform(20.0, 26.0), 2),
+            "humidity_rh": round(random.uniform(35.0, 60.0), 2),
+            "pressure_hpa": round(random.uniform(1005.0, 1022.0), 2),
+            "gas_resistance_ohm": round(random.uniform(12000.0, 42000.0), 2),
+        }
+
+    if "mlx90640" in sensor_key:
+        thermal_frame = [round(random.uniform(24.0, 34.0), 2) for _ in range(24)]
+        return {
+            "min_temp_c": min(thermal_frame),
+            "avg_temp_c": round(sum(thermal_frame) / len(thermal_frame), 2),
+            "max_temp_c": max(thermal_frame),
+            "thermal_frame": thermal_frame,
+        }
+
+    if "as7265x" in sensor_key:
+        wavelengths = (
+            "410nm",
+            "435nm",
+            "460nm",
+            "485nm",
+            "510nm",
+            "535nm",
+            "560nm",
+            "585nm",
+            "610nm",
+            "645nm",
+            "680nm",
+            "705nm",
+        )
+        return {
+            "spectral_channels": {
+                name: round(random.uniform(0.05, 1.0), 3) for name in wavelengths
+            }
+        }
+
+    if "ads1263" in sensor_key:
+        adc_channels = sensors_config.get("adc_channels", {})
+        if isinstance(adc_channels, dict) and adc_channels:
+            channel_values = {
+                str(channel_id): round(random.uniform(0.02, 2.8), 3)
+                for channel_id in adc_channels.keys()
+            }
+        else:
+            channel_values = {
+                "ch0": round(random.uniform(0.02, 2.8), 3),
+                "ch1": round(random.uniform(0.02, 2.8), 3),
+            }
+        return {"channels": channel_values}
+
+    if "hlk_ld2410" in sensor_key:
+        moving_distance = random.randint(50, 450)
+        still_distance = random.randint(30, 220)
+        detection_distance = max(moving_distance, still_distance)
+        return {
+            "target_state": random.choice(["moving", "still", "none"]),
+            "moving_target_energy": random.randint(0, 100),
+            "stationary_target_energy": random.randint(0, 100),
+            "moving_target_distance_cm": moving_distance,
+            "stationary_target_distance_cm": still_distance,
+            "detection_distance_cm": detection_distance,
+        }
+
+    if "tfmini" in sensor_key:
+        valid = random.random() > 0.1
+        return {
+            "distance_cm": random.randint(35, 500) if valid else None,
+            "signal_strength": random.randint(30, 200) if valid else None,
+            "temperature_c": round(random.uniform(25.0, 37.0), 2) if valid else None,
+            "max_range_cm": 1200,
+            "valid": valid,
+        }
+
+    if "max30102" in sensor_key:
+        return {
+            "heart_rate_bpm": round(random.uniform(58.0, 92.0), 1),
+            "spo2_percent": round(random.uniform(95.0, 100.0), 1),
+            "ir_avg": round(random.uniform(32000.0, 76000.0), 2),
+        }
+
+    return {"value": round(random.uniform(0.0, 1.0), 4)}
+
+
+class _SimulatedSensor(BaseSensor):
+    """Development-only simulated sensor used when hardware is unavailable."""
+
+    def __init__(self, sensor_id: str, sensors_config: Dict[str, Any]) -> None:
+        super().__init__(sensor_id=sensor_id, adapter=None, config={"simulated": True})
+        self._sensors_config = sensors_config
+
+    def initialize(self) -> bool:
+        self.status = SensorStatus.READY
+        return True
+
+    def read(self) -> SensorReading:
+        try:
+            reading = SensorReading(
+                sensor_id=self.sensor_id,
+                timestamp=datetime.now(timezone.utc),
+                value=_build_simulated_sensor_value(self.sensor_id, self._sensors_config),
+                confidence=0.92,
+                metadata={"simulated": True},
+            )
+            self._record_reading(reading)
+            return reading
+        except Exception as e:
+            self._record_error(e)
+            raise
+
+    def calibrate(self, **kwargs: Any) -> bool:
+        self.status = SensorStatus.CALIBRATING
+        self.status = SensorStatus.READY
+        return True
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        diagnostics = super().get_diagnostics()
+        diagnostics["simulated"] = True
+        return diagnostics
+
+
+def _bootstrap_default_tools(registry: ToolRegistry, config: Dict[str, Any]) -> SensorManager:
+    """Populate the default registry with sensor and anomaly tools."""
+    sensor_manager = SensorManager()
+    sensors_config = config.get("sensors", {})
+    sensors_dict = sensors_config if isinstance(sensors_config, dict) else {}
+    environment = str(config.get("environment", "development")).strip().lower()
+    use_simulated_sensors = environment in {"development", "dev", "local", "test"}
+
+    if use_simulated_sensors:
+        configured_sensor_ids = _iter_enabled_sensor_ids(sensors_dict)
+        for sensor_id in configured_sensor_ids:
+            sensor_manager.register_sensor(sensor_id, _SimulatedSensor(sensor_id, sensors_dict))
+        init_results = sensor_manager.initialize_all()
+        ready_count = sum(1 for initialized in init_results.values() if initialized)
+        logger.info(
+            "Initialized %d/%d development simulated sensors",
+            ready_count,
+            len(init_results),
+        )
+
+    register_sensor_tools(registry, sensor_manager)
+    register_anomaly_tools(registry)
+    logger.info("Default MCP tool bootstrap complete: %d tools", registry.tool_count)
+    return sensor_manager
+
+
 def _coerce_float(value: Any) -> Optional[float]:
     try:
         candidate = float(value)
@@ -181,6 +353,27 @@ def _coerce_bool(value: Any) -> Optional[bool]:
     if isinstance(value, (int, float)):
         return bool(value)
     return None
+
+
+def _build_query_intent_note(query: str, sensor_snapshot: Dict[str, Any]) -> str:
+    """Build a concise, query-aware note for UI agent chat replies."""
+    lowered = query.strip().lower()
+    if not lowered:
+        return ""
+
+    if any(term in lowered for term in ("sensor", "diagnostic", "status", "active", "reading")):
+        if sensor_snapshot:
+            sensor_ids = [str(sensor_id) for sensor_id in sensor_snapshot.keys()]
+            sample = ", ".join(sensor_ids[:6])
+            if len(sensor_ids) > 6:
+                sample = f"{sample}, ..."
+            return f"Active sensor streams: {sample}."
+        return "No active sensor streams were available in this snapshot."
+
+    if any(term in lowered for term in ("hello", "hi", "hey", "lol")):
+        return "Greeting acknowledged. Library Computer remains on active watch."
+
+    return "Query captured and correlated with current tricorder context."
 
 
 def _severity_from_score(
@@ -275,7 +468,7 @@ def _build_anomaly_id(
     timestamp_label = reference_timestamp or "live"
 
     seed = f"{model_id}|{severity}|{score_label}|{timestamp_label}"
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"anom-{digest}"
 
 
@@ -400,12 +593,30 @@ def create_app(
     if not isinstance(ui_config, dict):
         ui_config = {}
 
-    reg = registry or tool_registry
+    reg = registry if registry is not None else ToolRegistry()
+    sensor_manager: Optional[SensorManager] = None
+    if registry is None:
+        sensor_manager = _bootstrap_default_tools(reg, config)
 
     app = FastAPI(
         title=config.get("project_name", config.get("title", "Tricorder MCP Server")),
         version=config.get("version", "1.0.0"),
     )
+    app.state.tool_registry = reg
+    if sensor_manager is not None:
+        app.state.sensor_manager = sensor_manager
+
+    @app.exception_handler(404)
+    async def _not_found_handler(request: Request, _exc: HTTPException) -> Any:
+        if request.url.path.startswith("/ui/"):
+            return HTMLResponse(
+                content="<html><body><h1>404 Not Found</h1>"
+                f"<p>Path {request.url.path!r} does not exist.</p>"
+                "<p><a href='/ui/'>Return to Tricorder</a></p></body></html>",
+                status_code=404,
+            )
+        detail = _exc.detail if _exc.detail else "Not Found"
+        return JSONResponse(content={"detail": detail}, status_code=404)
 
     auth_enabled = server_config.get("auth_enabled", False)
     api_key = server_config.get("api_key")
@@ -681,10 +892,16 @@ def create_app(
 
         result_payload = agent_result if isinstance(agent_result, dict) else {}
         report = str(result_payload.get("report") or "No report generated.")
+        query_note = _build_query_intent_note(request.query, sensor_snapshot)
+        reply_sections = [f"QUERY: {request.query}"]
+        if query_note:
+            reply_sections.append(query_note)
+        reply_sections.append(report)
+        reply_text = "\n\n".join(reply_sections)
 
         return {
             "query": request.query,
-            "reply": f"QUERY: {request.query}\n\n{report}",
+            "reply": reply_text,
             "report": report,
             "severity": str(result_payload.get("severity") or "UNKNOWN"),
             "needs_human_approval": bool(result_payload.get("needs_human_approval", False)),
@@ -694,6 +911,15 @@ def create_app(
                 "anomaly": anomaly_payload,
                 "sensors": affected_sensors,
             },
+        }
+
+    @app.get(anomaly_ack_path)
+    async def ui_anomaly_ack_info() -> Dict[str, Any]:
+        """Describe the anomaly acknowledgment endpoint."""
+        return {
+            "endpoint": anomaly_ack_path,
+            "method": "POST",
+            "note": "POST with anomaly_id to acknowledge an anomaly.",
         }
 
     @app.post(anomaly_ack_path)

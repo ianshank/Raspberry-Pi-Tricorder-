@@ -141,7 +141,7 @@ body {
 
 .bar-row {
   display: grid;
-  grid-template-columns: 3.2rem 1fr auto;
+  grid-template-columns: minmax(3.2rem, max-content) 1fr auto;
   gap: 0.35rem;
   align-items: center;
 }
@@ -319,6 +319,32 @@ body {
   white-space: pre-wrap;
 }
 
+.agent-chat-text.markdown {
+  white-space: normal;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.agent-chat-text.markdown p,
+.agent-chat-text.markdown h1,
+.agent-chat-text.markdown h2,
+.agent-chat-text.markdown h3,
+.agent-chat-text.markdown ul {
+  margin: 0;
+}
+
+.agent-chat-text.markdown ul {
+  padding-left: 1.2rem;
+}
+
+.agent-chat-text.markdown code {
+  border-radius: 0.25rem;
+  border: 1px solid #2f4661;
+  background: rgba(5, 11, 18, 0.88);
+  padding: 0.05rem 0.3rem;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
 .agent-chat-meta {
   margin-top: 0.3rem;
   font-size: 0.82rem;
@@ -355,6 +381,17 @@ body {
 .agent-chat-send:disabled {
   cursor: default;
   opacity: 0.72;
+}
+
+.tricorder-footer .lcars-bahama-blue-bg {
+  pointer-events: none;
+  cursor: default;
+}
+
+/* WCAG 2.1 focus indicators */
+:focus-visible {
+  outline: 2px solid #f6bd84;
+  outline-offset: 2px;
 }
 
 @media (max-width: 980px) {

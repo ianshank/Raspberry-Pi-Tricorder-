@@ -53,6 +53,7 @@ class AgentState(TypedDict, total=False):
     anomaly_event: Optional[Dict[str, Any]]
     evidence: Annotated[List[Dict[str, Any]], operator.add]
     planned_tools: List[str]
+    planned_steps: List[Dict[str, Any]]
     tool_results: Annotated[List[Dict[str, Any]], operator.add]
     report: Optional[str]
     severity: Optional[str]
@@ -247,32 +248,62 @@ class TricorderAgent:
 
         return {
             "planned_tools": [ep["tool"] for ep in evidence_plan],
+            "planned_steps": list(evidence_plan),
             "evidence": evidence_plan,
         }
 
     def plan_tools_node(self, state: AgentState) -> Dict[str, Any]:
         """Plan which tools to execute next."""
+        planned_steps = state.get("planned_steps", [])
+        if planned_steps:
+            executed_keys = set()
+            for r in state.get("tool_results", []):
+                t = r.get("tool", "")
+                a = r.get("args", {}) if isinstance(r.get("args"), dict) else {}
+                executed_keys.add((t, tuple(sorted((k, str(v)) for k, v in a.items()))))
+            remaining_steps = [
+                step for step in planned_steps
+                if (
+                    step.get("tool", ""),
+                    tuple(sorted((k, str(v)) for k, v in step.get("args", {}).items())),
+                ) not in executed_keys
+            ]
+            return {
+                "planned_tools": [s["tool"] for s in remaining_steps],
+                "planned_steps": remaining_steps,
+            }
+        # Fallback: no planned_steps, use name-only dedup (backward compat)
         planned = state.get("planned_tools", [])
         executed = [r.get("tool") for r in state.get("tool_results", [])]
         remaining = [t for t in planned if t not in executed]
-
         return {"planned_tools": remaining}
 
     def execute_tools_node(self, state: AgentState) -> Dict[str, Any]:
         """Execute planned tools via MCP tool caller."""
+        planned_steps = state.get("planned_steps", [])
         planned = state.get("planned_tools", [])
         results = []
 
-        for tool_name in planned[:self.max_tools_per_iteration]:
+        if planned_steps:
+            steps_to_run = planned_steps[:self.max_tools_per_iteration]
+        else:
+            steps_to_run = [{"tool": t, "args": {}} for t in planned[:self.max_tools_per_iteration]]
+
+        for step in steps_to_run:
+            tool_name = str(step.get("tool", ""))
+            args = step.get("args", {})
+            if not isinstance(args, dict):
+                args = {}
             if self.tool_caller:
                 try:
-                    result = self.tool_caller(tool_name, {})
-                    results.append({"tool": tool_name, "result": result, "success": True})
+                    result = self.tool_caller(tool_name, args)
+                    results.append({"tool": tool_name, "args": args, "result": result, "success": True})
                 except Exception as e:
-                    results.append({"tool": tool_name, "error": str(e), "success": False})
+                    results.append({"tool": tool_name, "args": args, "error": str(e), "success": False})
             else:
                 results.append({
                     "tool": tool_name,
+                    "args": args,
                     "result": {"note": "No tool_caller configured"},
                     "success": False,
                 })
@@ -341,6 +372,7 @@ class TricorderAgent:
             "anomaly_event": anomaly_event,
             "evidence": [],
             "planned_tools": [],
+            "planned_steps": [],
             "tool_results": [],
             "report": None,
             "severity": None,
