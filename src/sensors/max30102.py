@@ -46,6 +46,33 @@ class MAX30102Sensor(BaseSensor):
     DEFAULT_CONFIDENCE = 0.85
     DEFAULT_HR_BOUNDS = {"min_bpm": 40, "max_bpm": 200}
 
+    @classmethod
+    def _normalize_hr_bounds(cls, raw: Any) -> Dict[str, float]:
+        if raw is None:
+            return dict(cls.DEFAULT_HR_BOUNDS)
+        if not isinstance(raw, dict):
+            raise ValueError("hr_bounds must be a dictionary")
+
+        bounds: Dict[str, Any] = dict(cls.DEFAULT_HR_BOUNDS)
+        bounds.update(raw)
+
+        min_bpm_raw = bounds.get("min_bpm")
+        max_bpm_raw = bounds.get("max_bpm")
+        if min_bpm_raw is None or max_bpm_raw is None:
+            raise ValueError("hr_bounds must include both min_bpm and max_bpm")
+        try:
+            min_bpm = float(min_bpm_raw)
+            max_bpm = float(max_bpm_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("hr_bounds min_bpm/max_bpm must be numeric") from exc
+
+        if min_bpm <= 0 or max_bpm <= 0:
+            raise ValueError("hr_bounds min_bpm/max_bpm must be positive")
+        if min_bpm >= max_bpm:
+            raise ValueError("hr_bounds must satisfy min_bpm < max_bpm")
+
+        return {"min_bpm": min_bpm, "max_bpm": max_bpm}
+
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
         self.address = config.get("address", 0x57)
@@ -58,7 +85,7 @@ class MAX30102Sensor(BaseSensor):
         self.device_config = config.get("device_config", self.DEFAULT_DEVICE_CONFIG)
         self.spo2_calibration = config.get("spo2_calibration", self.DEFAULT_SPO2_CALIBRATION)
         self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
-        self.hr_bounds = config.get("hr_bounds", self.DEFAULT_HR_BOUNDS)
+        self.hr_bounds = self._normalize_hr_bounds(config.get("hr_bounds"))
 
     def initialize(self) -> bool:
         try:

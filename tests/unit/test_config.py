@@ -121,6 +121,24 @@ class TestLangGraphAgentConfig:
         config = LangGraphAgentConfig(severity_thresholds={"critical": 0.95, "high": 0.8, "medium": 0.6})
         assert config.severity_thresholds["critical"] == 0.95
 
+    def test_severity_thresholds_partial_override_merges_defaults(self):
+        config = LangGraphAgentConfig(severity_thresholds={"critical": 0.95})
+        assert config.severity_thresholds == {
+            "critical": 0.95,
+            "high": 0.75,
+            "medium": 0.5,
+        }
+
+    def test_severity_thresholds_invalid_order_rejected(self):
+        with pytest.raises(ValueError, match="critical >= high >= medium"):
+            LangGraphAgentConfig(
+                severity_thresholds={"critical": 0.7, "high": 0.8, "medium": 0.6}
+            )
+
+    def test_severity_thresholds_invalid_type_rejected(self):
+        with pytest.raises(ValueError, match="must be a dictionary"):
+            LangGraphAgentConfig(severity_thresholds="not-a-dict")
+
     def test_max_tools_per_iteration_default(self):
         config = LangGraphAgentConfig()
         assert config.max_tools_per_iteration == 3

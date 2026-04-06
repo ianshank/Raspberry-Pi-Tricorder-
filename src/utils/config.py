@@ -155,7 +155,7 @@ class LangGraphAgentConfig(BaseModel):
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
     severity_thresholds: Dict[str, float] = Field(
-        default={"critical": 0.9, "high": 0.75, "medium": 0.5},
+        default_factory=lambda: {"critical": 0.9, "high": 0.75, "medium": 0.5},
         description="Anomaly score thresholds for severity classification",
     )
     max_tools_per_iteration: int = Field(default=3, gt=0, le=20)
@@ -176,6 +176,39 @@ class LangGraphAgentConfig(BaseModel):
         if v not in valid:
             raise ValueError(f"Threshold must be one of {valid}, got {v}")
         return v
+
+    @field_validator('severity_thresholds', mode='before')
+    @classmethod
+    def validate_severity_thresholds(cls, v: Any) -> Dict[str, float]:
+        defaults = {"critical": 0.9, "high": 0.75, "medium": 0.5}
+        if v is None:
+            return defaults.copy()
+        if not isinstance(v, dict):
+            raise ValueError("severity_thresholds must be a dictionary")
+
+        merged = defaults.copy()
+        merged.update(v)
+
+        normalized: Dict[str, float] = {}
+        for key in defaults:
+            try:
+                value = float(merged[key])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"severity_thresholds[{key!r}] must be a float between 0.0 and 1.0"
+                ) from exc
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"severity_thresholds[{key!r}] must be between 0.0 and 1.0, got {value}"
+                )
+            normalized[key] = value
+
+        if not (
+            normalized["critical"] >= normalized["high"] >= normalized["medium"]
+        ):
+            raise ValueError("severity_thresholds must satisfy critical >= high >= medium")
+
+        return normalized
 
 
 class RAGConfig(BaseModel):

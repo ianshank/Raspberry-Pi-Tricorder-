@@ -24,13 +24,31 @@ class AnomalyDetector(BaseModel):
 
     DEFAULT_MAX_HISTORY = 1000
 
+    @staticmethod
+    def _get_valid_max_history(config: Dict[str, Any]) -> int:
+        raw_max_history = config.get("max_history", AnomalyDetector.DEFAULT_MAX_HISTORY)
+        try:
+            max_history = int(raw_max_history)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid max_history=%r; using default=%d",
+                raw_max_history,
+                AnomalyDetector.DEFAULT_MAX_HISTORY,
+            )
+            max_history = AnomalyDetector.DEFAULT_MAX_HISTORY
+
+        if max_history < 1:
+            logger.warning("max_history=%d is invalid; clamping to 1", max_history)
+            return 1
+        return max_history
+
     def __init__(self, model_id: str, adapter: InferenceAdapter, config: Dict[str, Any]):
         super().__init__(model_id, adapter, config)
         self.window_size = config.get("window_size", 256)
         self.confidence_threshold = config.get("confidence_threshold", 0.75)
         self.input_shape = config.get("input_shape", [1, 256, 10])
         self.output_shape = config.get("output_shape", [1, 10])
-        self.max_history = config.get("max_history", self.DEFAULT_MAX_HISTORY)
+        self.max_history = self._get_valid_max_history(config)
         self._baseline_mse: float = 0.0
         self._anomaly_history: list = []
 

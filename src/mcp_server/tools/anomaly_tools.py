@@ -9,6 +9,9 @@ from models.base import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
+MAX_SENSOR_DATA_ITEMS = 10_000
+GENERIC_ANOMALY_SCAN_ERROR = "Anomaly scan operation failed. Check logs for details."
+
 
 def register_anomaly_tools(registry: Any) -> None:
     """Register anomaly detection MCP tools."""
@@ -24,16 +27,36 @@ def register_anomaly_tools(registry: Any) -> None:
 
         try:
             if sensor_data is not None:
+                if len(sensor_data) > MAX_SENSOR_DATA_ITEMS:
+                    return {
+                        "error": (
+                            f"sensor_data exceeds maximum item count "
+                            f"({MAX_SENSOR_DATA_ITEMS})"
+                        )
+                    }
                 input_array = np.array(sensor_data, dtype=np.float32)
+                if not np.all(np.isfinite(input_array)):
+                    return {"error": "sensor_data contains non-finite values"}
             else:
                 # Generate zero input as placeholder when no data provided
-                input_array = np.zeros(model.input_shape, dtype=np.float32)
+                input_shape = getattr(model, "input_shape", None)
+                if input_shape is None:
+                    model_config = getattr(model, "config", None)
+                    if isinstance(model_config, dict):
+                        input_shape = model_config.get("input_shape")
+
+                if input_shape is None:
+                    raise ValueError(
+                        f"Model {model_id} does not define an input shape for placeholder generation"
+                    )
+
+                input_array = np.zeros(input_shape, dtype=np.float32)
 
             result = model.predict(input_array)
             return result.to_dict()
         except Exception as e:
-            logger.error("run_anomaly_scan failed: %s", e)
-            return {"error": str(e)}
+            logger.error("run_anomaly_scan failed: %s", e, exc_info=True)
+            return {"error": GENERIC_ANOMALY_SCAN_ERROR}
 
     registry.register_function(
         name="run_anomaly_scan",
@@ -48,6 +71,7 @@ def register_anomaly_tools(registry: Any) -> None:
                 },
                 "sensor_data": {
                     "type": "array",
+                    "maxItems": MAX_SENSOR_DATA_ITEMS,
                     "description": "Optional sensor data array. If omitted, uses buffered data.",
                 },
             },

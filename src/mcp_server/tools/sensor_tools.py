@@ -7,6 +7,9 @@ from sensors.manager import SensorManager
 
 logger = logging.getLogger(__name__)
 
+GENERIC_SENSOR_READ_ERROR = "Sensor read operation failed. Check logs for details."
+GENERIC_SENSOR_CALIBRATION_ERROR = "Sensor calibration failed. Check logs for details."
+
 
 def register_sensor_tools(registry, sensor_manager: SensorManager) -> None:
     """
@@ -24,8 +27,8 @@ def register_sensor_tools(registry, sensor_manager: SensorManager) -> None:
             reading = sensor.read()
             return reading.to_dict()
         except Exception as e:
-            logger.error("read_sensor(%s) failed: %s", sensor_id, e)
-            return {"error": str(e)}
+            logger.error("read_sensor(%s) failed: %s", sensor_id, e, exc_info=True)
+            return {"error": GENERIC_SENSOR_READ_ERROR}
 
     registry.register_function(
         name="read_sensor",
@@ -99,8 +102,8 @@ def register_sensor_tools(registry, sensor_manager: SensorManager) -> None:
             success = sensor.calibrate()
             return {"sensor_id": sensor_id, "calibration_success": success}
         except Exception as e:
-            logger.error("calibrate_sensor(%s) failed: %s", sensor_id, e)
-            return {"error": str(e)}
+            logger.error("calibrate_sensor(%s) failed: %s", sensor_id, e, exc_info=True)
+            return {"error": GENERIC_SENSOR_CALIBRATION_ERROR}
 
     registry.register_function(
         name="calibrate_sensor",

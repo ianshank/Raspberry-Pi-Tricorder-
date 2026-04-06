@@ -62,6 +62,40 @@ class TestTricorderAgent:
         assert result["severity"] == "LOW"
         assert result["needs_human_approval"] is False
 
+    def test_sensor_monitor_partial_threshold_override(self, agent_config):
+        agent_config["severity_thresholds"] = {"critical": 0.95}
+        agent = TricorderAgent(config=agent_config)
+        state: AgentState = {
+            "messages": [],
+            "anomaly_event": {"anomaly_score": 0.8},
+            "evidence": [],
+            "planned_tools": [],
+            "tool_results": [],
+            "report": None,
+            "severity": None,
+            "needs_human_approval": False,
+            "iteration_count": 0,
+        }
+        result = agent.sensor_monitor_node(state)
+        assert result["severity"] == "HIGH"
+
+    def test_sensor_monitor_invalid_thresholds_fallback(self, agent_config):
+        agent_config["severity_thresholds"] = "invalid"
+        agent = TricorderAgent(config=agent_config)
+        state: AgentState = {
+            "messages": [],
+            "anomaly_event": {"anomaly_score": 0.95},
+            "evidence": [],
+            "planned_tools": [],
+            "tool_results": [],
+            "report": None,
+            "severity": None,
+            "needs_human_approval": False,
+            "iteration_count": 0,
+        }
+        result = agent.sensor_monitor_node(state)
+        assert result["severity"] == "CRITICAL"
+
     def test_evidence_gather_node(self, agent_config):
         agent = TricorderAgent(config=agent_config)
         state: AgentState = {

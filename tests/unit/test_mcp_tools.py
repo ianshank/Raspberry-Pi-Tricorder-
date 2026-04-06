@@ -94,6 +94,12 @@ class TestSensorTools:
         result = registry._tools["read_sensor"](sensor_id="bme680_01")
         assert "error" in result
 
+    def test_read_sensor_error_is_sanitized(self, sensor_setup):
+        registry, _, mock_sensor = sensor_setup
+        mock_sensor.read.side_effect = RuntimeError("internal driver failure details")
+        result = registry._tools["read_sensor"](sensor_id="bme680_01")
+        assert result["error"] == "Sensor read operation failed. Check logs for details."
+
     def test_tools_registered(self, sensor_setup):
         registry, _, _ = sensor_setup
         expected = ["read_sensor", "list_sensors", "read_all_sensors",
@@ -163,3 +169,33 @@ class TestAnomalyTools:
         registry, _ = anomaly_setup
         assert registry.has_tool("run_anomaly_scan")
         assert registry.has_tool("get_anomaly_history")
+
+    def test_run_anomaly_scan_falls_back_to_config_input_shape(self, anomaly_setup):
+        registry, mock_model = anomaly_setup
+        del mock_model.input_shape
+        result = registry._tools["run_anomaly_scan"](model_id="anomaly_detector")
+        assert "output" in result
+
+    def test_run_anomaly_scan_missing_input_shape_returns_error(self, anomaly_setup):
+        registry, mock_model = anomaly_setup
+        del mock_model.input_shape
+        mock_model.config = {}
+        result = registry._tools["run_anomaly_scan"](model_id="anomaly_detector")
+        assert "error" in result
+
+    def test_run_anomaly_scan_rejects_oversized_sensor_data(self, anomaly_setup):
+        registry, _ = anomaly_setup
+        oversized = [0.0] * 10001
+        result = registry._tools["run_anomaly_scan"](
+            model_id="anomaly_detector",
+            sensor_data=oversized,
+        )
+        assert "exceeds maximum item count" in result["error"]
+
+    def test_run_anomaly_scan_rejects_non_finite_sensor_data(self, anomaly_setup):
+        registry, _ = anomaly_setup
+        result = registry._tools["run_anomaly_scan"](
+            model_id="anomaly_detector",
+            sensor_data=[[[float("nan"), 1.0], [2.0, 3.0]]],
+        )
+        assert result["error"] == "sensor_data contains non-finite values"

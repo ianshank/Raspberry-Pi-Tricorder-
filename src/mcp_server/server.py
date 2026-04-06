@@ -7,6 +7,7 @@ All configuration loaded from TricorderConfig — no hardcoded values.
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from datetime import datetime, timezone
 import asyncio
+import hmac
 import hashlib
 import logging
 import math
@@ -485,7 +486,7 @@ def create_app(
                 )
 
             token = request.headers.get("Authorization", "").replace("Bearer ", "")
-            if token != api_key:
+            if not hmac.compare_digest(token, api_key):
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Invalid or missing API key"},
@@ -597,7 +598,7 @@ def create_app(
                 return False
 
             token = websocket.query_params.get("token") or websocket.query_params.get("api_key")
-            if token != api_key:
+            if not token or not hmac.compare_digest(token, api_key):
                 await websocket.close(code=1008)
                 return False
         return True
