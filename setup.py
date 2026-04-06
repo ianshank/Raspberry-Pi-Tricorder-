@@ -14,6 +14,7 @@ setup(
         "uvicorn>=0.32.0",
         "websockets>=12.0",
         "numpy>=1.26.0",
+        "structlog>=24.0.0",
     ],
     extras_require={
         "dev": [
