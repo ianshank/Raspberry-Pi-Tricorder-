@@ -205,28 +205,28 @@ class TestLoadConfig:
 class TestEnvOverrides:
     def test_simple_override(self, monkeypatch):
         config_dict = {"logging": {"level": "INFO"}}
-        monkeypatch.setenv("TRICORDER_LOGGING_LEVEL", "DEBUG")
+        monkeypatch.setenv("TRICORDER__LOGGING__LEVEL", "DEBUG")
         result = _apply_env_overrides(config_dict, prefix="TRICORDER")
         assert result["logging"]["level"] == "DEBUG"
 
     def test_nested_override(self, monkeypatch):
-        """Env vars split by underscore into nested keys."""
-        config_dict = {"sensors": {"i2c": {"devices": {}}}}
-        monkeypatch.setenv("TRICORDER_SENSORS_I2C_DEVICES_ADDRESS", "118")
+        """Double-underscore separator preserves underscored field names."""
+        config_dict = {"mcp_server": {}}
+        monkeypatch.setenv("TRICORDER__MCP_SERVER__HOST", "0.0.0.0")
         result = _apply_env_overrides(config_dict, prefix="TRICORDER")
-        assert result["sensors"]["i2c"]["devices"]["address"] == 118
+        assert result["mcp_server"]["host"] == "0.0.0.0"
 
     def test_json_value_override(self, monkeypatch):
-        config_dict = {"mcp": {"server": {}}}
-        monkeypatch.setenv("TRICORDER_MCP_SERVER_PORT", "9000")
+        config_dict = {"mcp_server": {}}
+        monkeypatch.setenv("TRICORDER__MCP_SERVER__PORT", "9000")
         result = _apply_env_overrides(config_dict, prefix="TRICORDER")
-        assert result["mcp"]["server"]["port"] == 9000
+        assert result["mcp_server"]["port"] == 9000
 
     def test_string_value_override(self, monkeypatch):
         config_dict = {"agent": {}}
-        monkeypatch.setenv("TRICORDER_AGENT_MODEL", "llama3:8b")
+        monkeypatch.setenv("TRICORDER__AGENT__MODEL_NAME", "llama3:8b")
         result = _apply_env_overrides(config_dict, prefix="TRICORDER")
-        assert result["agent"]["model"] == "llama3:8b"
+        assert result["agent"]["model_name"] == "llama3:8b"
 
     def test_no_matching_env(self):
         config_dict = {"logging": {"level": "INFO"}}

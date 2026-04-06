@@ -1,0 +1,19 @@
+# Production environment overrides
+# Inherits from base.yaml — only list values that differ.
+
+environment: "production"
+
+logging:
+  level: "INFO"
+  json_format: true
+
+mcp_server:
+  auth_enabled: true
+
+feature_flags:
+  anomaly_ack: true
+  agent_chat: true
+  mqtt_publishing: true
+
+ui:
+  debug: false

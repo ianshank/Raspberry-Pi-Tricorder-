@@ -369,6 +369,7 @@ class LoggingConfig(BaseModel):
     file_path: Optional[str] = Field(default="logs/tricorder.log")
     max_bytes: int = Field(default=10485760, gt=0, description="10 MB default")
     backup_count: int = Field(default=5, ge=0, le=20)
+    json_format: bool = Field(default=False, description="Emit structured JSON logs (production)")
 
     @field_validator('level')
     @classmethod
@@ -377,6 +378,13 @@ class LoggingConfig(BaseModel):
         if v not in valid:
             raise ValueError(f"Log level must be one of {valid}, got {v}")
         return v
+
+
+class FeatureFlagsConfig(BaseModel):
+    """Feature flags for toggling capabilities at runtime."""
+    anomaly_ack: bool = Field(default=True, description="Enable anomaly acknowledgment endpoint")
+    agent_chat: bool = Field(default=True, description="Enable agent chat endpoint")
+    mqtt_publishing: bool = Field(default=True, description="Enable MQTT event publishing")
 
 
 class TricorderConfig(BaseModel):
@@ -393,6 +401,7 @@ class TricorderConfig(BaseModel):
     mqtt: MQTTConfig = Field(default_factory=MQTTConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
 
     model_config = {"extra": "forbid"}
 
@@ -434,13 +443,19 @@ def _apply_env_overrides(config: Dict[str, Any], prefix: str = "TRICORDER") -> D
     """
     Apply environment variable overrides to config dictionary.
 
-    TRICORDER_LOGGING_LEVEL=DEBUG overrides config['logging']['level']
+    Uses double-underscore ``__`` as the nesting separator so that field
+    names containing underscores (e.g. ``mcp_server``, ``json_format``)
+    are preserved.
+
+    TRICORDER__LOGGING__LEVEL=DEBUG  →  config['logging']['level']
+    TRICORDER__MCP_SERVER__HOST=0.0.0.0  →  config['mcp_server']['host']
     """
+    sep = "__"
     for env_key, env_value in os.environ.items():
-        if not env_key.startswith(f"{prefix}_"):
+        if not env_key.startswith(f"{prefix}{sep}"):
             continue
 
-        keys = env_key[len(prefix) + 1:].lower().split('_')
+        keys = [k.lower() for k in env_key[len(prefix) + len(sep):].split(sep)]
 
         current = config
         for key in keys[:-1]:

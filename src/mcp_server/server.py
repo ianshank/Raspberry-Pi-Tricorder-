@@ -21,6 +21,21 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+class MCPServerError(Exception):
+    """Base exception for MCP server errors."""
+    pass
+
+
+class ToolExecutionError(MCPServerError):
+    """Raised when a tool call fails during execution."""
+    pass
+
+
+class AuthenticationError(MCPServerError):
+    """Raised when an authentication check fails."""
+    pass
+
+
 DEFAULT_UI_WS_PATH = "/ws/sensors"
 DEFAULT_UI_ANOMALY_WS_PATH = "/ws/anomalies"
 DEFAULT_UI_ANOMALY_ACK_PATH = "/ui/anomalies/ack"
@@ -168,14 +183,25 @@ def _coerce_bool(value: Any) -> Optional[bool]:
     return None
 
 
-def _severity_from_score(score: Optional[float]) -> str:
+def _severity_from_score(
+    score: Optional[float],
+    thresholds: Optional[Dict[str, float]] = None,
+) -> str:
+    """Map an anomaly score to a severity label.
+
+    Args:
+        score: Anomaly score in [0, 1], or None.
+        thresholds: Dict with keys ``critical``, ``high``, ``medium``.
+            Defaults to ``{"critical": 0.9, "high": 0.75, "medium": 0.5}``.
+    """
     if score is None:
         return "UNKNOWN"
-    if score >= 0.9:
+    t = thresholds if isinstance(thresholds, dict) else {"critical": 0.9, "high": 0.75, "medium": 0.5}
+    if score >= t.get("critical", 0.9):
         return "CRITICAL"
-    if score >= 0.75:
+    if score >= t.get("high", 0.75):
         return "HIGH"
-    if score >= 0.5:
+    if score >= t.get("medium", 0.5):
         return "MEDIUM"
     return "LOW"
 
@@ -184,6 +210,7 @@ def _extract_anomaly_summary(
     scan_result: Any,
     latest_history_entry: Optional[Dict[str, Any]],
     fallback_threshold: float,
+    severity_thresholds: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Any]:
     scan_payload = scan_result if isinstance(scan_result, dict) else {}
     model_output = scan_payload.get("output", {})
@@ -213,7 +240,7 @@ def _extract_anomaly_summary(
     return {
         "anomaly_score": anomaly_score,
         "is_anomaly": bool(is_anomaly),
-        "severity": _severity_from_score(anomaly_score),
+        "severity": _severity_from_score(anomaly_score, severity_thresholds),
         "confidence": confidence,
     }
 
@@ -442,6 +469,11 @@ def create_app(
         1,
     )
     anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", 0.75))
+    # Read severity thresholds from agent config for consistent labeling
+    _agent_cfg = config.get("agent", {})
+    severity_thresholds: Optional[Dict[str, float]] = (
+        _agent_cfg.get("severity_thresholds") if isinstance(_agent_cfg, dict) else None
+    )
 
     acknowledged_anomalies: Dict[str, Dict[str, Any]] = {}
     acknowledged_order: List[str] = []
@@ -574,6 +606,7 @@ def create_app(
             scan_result=scan_result,
             latest_history_entry=latest_history_entry,
             fallback_threshold=anomaly_alert_threshold,
+            severity_thresholds=severity_thresholds,
         )
         payload.update(summary)
 

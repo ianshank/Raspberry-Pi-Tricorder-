@@ -116,6 +116,26 @@ class ModelInferenceError(ModelError):
     pass
 
 
+def validate_model_input(data: np.ndarray, name: str = "input") -> np.ndarray:
+    """Check that model input contains no NaN or Inf values.
+
+    Args:
+        data: Input array to validate.
+        name: Label for error messages.
+
+    Returns:
+        The validated array (unchanged).
+
+    Raises:
+        ModelInferenceError: If *data* contains NaN or infinite values.
+    """
+    if not np.all(np.isfinite(data)):
+        raise ModelInferenceError(
+            f"Invalid {name}: contains NaN or infinite values"
+        )
+    return data
+
+
 class ModelRegistry:
     """Registry for model instances."""
 

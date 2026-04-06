@@ -9,6 +9,7 @@ import numpy as np
 from models.base import (
     BaseModel, ModelResult, ModelStatus, ModelLoadError,
     ModelInferenceError, ModelRegistry, InferenceAdapter,
+    validate_model_input,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ class FusionEngine(BaseModel):
             self.status = ModelStatus.RUNNING
             start_time = time.monotonic()
 
+            validate_model_input(input_data, name=f"{self.model_id}_input")
             expected = tuple(self.input_shape)
             if input_data.shape != expected:
                 if input_data.size == np.prod(expected):

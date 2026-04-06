@@ -192,6 +192,16 @@ class TestAnomalyTools:
         )
         assert "exceeds maximum item count" in result["error"]
 
+    def test_run_anomaly_scan_rejects_nested_oversized_sensor_data(self, anomaly_setup):
+        """Nested list [[...10001 items...]] must not bypass the element limit."""
+        registry, _ = anomaly_setup
+        nested_oversized = [[0.0] * 10001]
+        result = registry._tools["run_anomaly_scan"](
+            model_id="anomaly_detector",
+            sensor_data=nested_oversized,
+        )
+        assert "exceeds maximum item count" in result["error"]
+
     def test_run_anomaly_scan_rejects_non_finite_sensor_data(self, anomaly_setup):
         registry, _ = anomaly_setup
         result = registry._tools["run_anomaly_scan"](

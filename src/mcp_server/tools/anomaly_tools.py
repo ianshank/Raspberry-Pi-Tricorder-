@@ -9,12 +9,51 @@ from models.base import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
-MAX_SENSOR_DATA_ITEMS = 10_000
+DEFAULT_MAX_SENSOR_DATA_ITEMS = 10_000
 GENERIC_ANOMALY_SCAN_ERROR = "Anomaly scan operation failed. Check logs for details."
 
 
-def register_anomaly_tools(registry: Any) -> None:
-    """Register anomaly detection MCP tools."""
+def _exceeds_total_item_limit(value: Any, limit: int) -> bool:
+    """Return True when a nested list/tuple payload contains more than *limit* scalar items.
+
+    Uses iterative stack traversal to avoid recursion depth limits on deeply
+    nested payloads.
+    """
+    total_items = 0
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (list, tuple)):
+            stack.extend(current)
+            continue
+        total_items += 1
+        if total_items > limit:
+            return True
+    return False
+
+
+def register_anomaly_tools(
+    registry: Any,
+    max_sensor_data_items: int = DEFAULT_MAX_SENSOR_DATA_ITEMS,
+) -> None:
+    """Register anomaly detection MCP tools.
+
+    Args:
+        registry: Tool registry to register with.
+        max_sensor_data_items: Upper bound on sensor_data array length.
+    """
+    effective_limit = max_sensor_data_items
+    if (
+        isinstance(effective_limit, bool)
+        or not isinstance(effective_limit, int)
+        or effective_limit < 1
+    ):
+        logger.warning(
+            "Invalid max_sensor_data_items=%r; falling back to default %d",
+            max_sensor_data_items,
+            DEFAULT_MAX_SENSOR_DATA_ITEMS,
+        )
+        effective_limit = DEFAULT_MAX_SENSOR_DATA_ITEMS
 
     def run_anomaly_scan(
         model_id: str = "anomaly_detector",
@@ -27,14 +66,25 @@ def register_anomaly_tools(registry: Any) -> None:
 
         try:
             if sensor_data is not None:
-                if len(sensor_data) > MAX_SENSOR_DATA_ITEMS:
+                if not isinstance(sensor_data, (list, tuple)):
+                    return {"error": "sensor_data must be a list or tuple"}
+                if _exceeds_total_item_limit(sensor_data, effective_limit):
                     return {
                         "error": (
                             f"sensor_data exceeds maximum item count "
-                            f"({MAX_SENSOR_DATA_ITEMS})"
+                            f"({effective_limit})"
                         )
                     }
                 input_array = np.array(sensor_data, dtype=np.float32)
+                # Defense-in-depth: reject if numpy materialized more elements
+                # than the limit (e.g. via broadcasting or unexpected coercion).
+                if input_array.size > effective_limit:
+                    return {
+                        "error": (
+                            f"sensor_data exceeds maximum item count "
+                            f"({effective_limit})"
+                        )
+                    }
                 if not np.all(np.isfinite(input_array)):
                     return {"error": "sensor_data contains non-finite values"}
             else:
@@ -73,7 +123,7 @@ def register_anomaly_tools(registry: Any) -> None:
                 },
                 "sensor_data": {
                     "type": "array",
-                    "maxItems": MAX_SENSOR_DATA_ITEMS,
+                    "maxItems": effective_limit,
                     "description": "Optional sensor data array. If omitted, uses buffered data.",
                 },
             },
