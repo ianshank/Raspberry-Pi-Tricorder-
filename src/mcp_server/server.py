@@ -5,10 +5,12 @@ All configuration loaded from TricorderConfig — no hardcoded values.
 """
 
 from typing import Any, Awaitable, Callable, Dict, List, Optional
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import asyncio
 import hmac
 import logging
+import math
 import random
 from pathlib import Path
 
@@ -84,6 +86,10 @@ class AgentChatRequest(BaseModel):
 
     query: str = Field(..., min_length=1, max_length=AGENT_CHAT_QUERY_MAX_LENGTH)
     include_sensor_context: bool = Field(default=True)
+    operator_id: Optional[str] = Field(
+        default=None, max_length=64,
+        description="Explicit operator identity. If absent, derived from auth context.",
+    )
 
 
 class AnomalyAcknowledgeRequest(BaseModel):
@@ -92,6 +98,18 @@ class AnomalyAcknowledgeRequest(BaseModel):
     anomaly_id: str = Field(..., min_length=1, max_length=128)
     acknowledged_by: str = Field(default="ui", min_length=1, max_length=64)
     note: Optional[str] = Field(default=None, max_length=256)
+    operator_source: Optional[str] = Field(
+        default=None, max_length=32,
+        description="How operator identity was determined (auto-populated if not set).",
+    )
+
+
+@dataclass
+class OperatorContext:
+    """Lightweight identity context for the current request operator."""
+
+    operator_id: str = "anonymous"
+    source: str = "anonymous"
 
 
 class ToolRegistry:
@@ -383,7 +401,7 @@ def create_app(
         if request.url.path.startswith("/ui/"):
             return HTMLResponse(
                 content="<html><body><h1>404 Not Found</h1>"
-                f"<p>Path {request.url.path!r} does not exist.</p>"
+                "<p>The requested resource could not be found.</p>"
                 "<p><a href='/ui/'>Return to Tricorder</a></p></body></html>",
                 status_code=404,
             )
@@ -451,6 +469,14 @@ def create_app(
         int(ui_public_config.get("anomaly_ack_history_limit", 500)),
         1,
     )
+    anomaly_history_path = str(
+        ui_public_config.get("anomaly_history_path", "/ui/anomalies/history"),
+    )
+    if not anomaly_history_path.startswith("/"):
+        anomaly_history_path = "/ui/anomalies/history"
+    anomaly_history_page_size = max(
+        int(ui_public_config.get("anomaly_history_page_size", 50)), 10,
+    )
     anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", 0.75))
     # Read severity thresholds from agent config for consistent labeling
     _agent_cfg = config.get("agent", {})
@@ -458,17 +484,21 @@ def create_app(
         _agent_cfg.get("severity_thresholds") if isinstance(_agent_cfg, dict) else None
     )
 
-    acknowledged_anomalies: Dict[str, Dict[str, Any]] = {}
-    acknowledged_order: List[str] = []
+    from mcp_server.ack_store import create_ack_store
 
-    def _upsert_anomaly_ack(anomaly_id: str, record: Dict[str, Any]) -> None:
-        if anomaly_id not in acknowledged_anomalies:
-            acknowledged_order.append(anomaly_id)
-        acknowledged_anomalies[anomaly_id] = record
+    anomaly_ack_db_path = str(ui_public_config.get("anomaly_ack_db_path", ""))
+    ack_store = create_ack_store(
+        db_path=anomaly_ack_db_path or None,
+        max_records=anomaly_ack_history_limit,
+    )
+    app.state.ack_store = ack_store
 
-        while len(acknowledged_order) > anomaly_ack_history_limit:
-            oldest = acknowledged_order.pop(0)
-            acknowledged_anomalies.pop(oldest, None)
+    # Operator identity mapping
+    raw_op_map = server_config.get("operator_map", {})
+    operator_map: Dict[str, str] = (
+        {str(k): str(v) for k, v in raw_op_map.items()}
+        if isinstance(raw_op_map, dict) else {}
+    )
 
     agent_runner: Optional[Any] = None
     if agent_enabled:
@@ -482,7 +512,26 @@ def create_app(
             def _agent_tool_caller(name: str, args: Dict[str, Any]) -> Any:
                 return reg.call_sync(name, args)
 
-            agent_runner = TricorderAgent(config=agent_config, tool_caller=_agent_tool_caller)
+            # Optionally wire up LLM client for report synthesis
+            llm_client = None
+            feature_flags = config.get("feature_flags", {})
+            if isinstance(feature_flags, dict) and feature_flags.get("llm_enabled", False):
+                try:
+                    from agents.llm_client import OllamaClient
+
+                    llm_client = OllamaClient(
+                        endpoint=agent_config.get("llm_endpoint", "http://localhost:11434"),
+                        model=agent_config.get("model_name", "qwen2.5:3b"),
+                        timeout_s=float(agent_config.get("llm_timeout_s", 30.0)),
+                    )
+                except Exception as llm_err:
+                    logger.warning("LLM client init failed: %s", llm_err)
+
+            agent_runner = TricorderAgent(
+                config=agent_config,
+                tool_caller=_agent_tool_caller,
+                llm_client=llm_client,
+            )
             agent_runner.build_graph()
         except Exception as e:
             logger.warning("Agent chat disabled: failed to initialize agent (%s)", e)
@@ -492,6 +541,9 @@ def create_app(
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ) -> Any:
+        # Default anonymous operator context
+        request.state.operator = OperatorContext()
+
         if auth_enabled and request.url.path not in AUTH_PUBLIC_PATHS:
             if not api_key:
                 logger.error("Authentication enabled but no API key configured")
@@ -506,6 +558,32 @@ def create_app(
                     status_code=401,
                     content={"detail": "Invalid or missing API key"},
                 )
+
+            # Token is valid — derive operator identity
+            if token in operator_map:
+                request.state.operator = OperatorContext(
+                    operator_id=operator_map[token],
+                    source="bearer_token",
+                )
+            else:
+                request.state.operator = OperatorContext(
+                    operator_id=f"token:{token[:8]}",
+                    source="api_key",
+                )
+        elif not auth_enabled:
+            # Auth disabled — check if token was sent voluntarily
+            token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+            if token and operator_map and token in operator_map:
+                request.state.operator = OperatorContext(
+                    operator_id=operator_map[token],
+                    source="bearer_token",
+                )
+
+        logger.debug(
+            "Operator resolved: id=%s, source=%s",
+            request.state.operator.operator_id,
+            request.state.operator.source,
+        )
         return await call_next(request)
 
     @app.get("/health")
@@ -603,7 +681,7 @@ def create_app(
         )
         payload["anomaly_id"] = anomaly_id
 
-        ack_record = acknowledged_anomalies.get(anomaly_id)
+        ack_record = ack_store.get(anomaly_id)
         payload["acknowledged"] = ack_record is not None
         if ack_record is not None:
             payload["acknowledgment"] = ack_record
@@ -625,16 +703,24 @@ def create_app(
         return True
 
     @app.post(agent_chat_path)
-    async def ui_agent_chat(request: AgentChatRequest) -> Dict[str, Any]:
-        logger.debug("ui_agent_chat entry: query=%r", request.query[:80])
+    async def ui_agent_chat(
+        body: AgentChatRequest, request: Request,
+    ) -> Dict[str, Any]:
+        logger.debug("ui_agent_chat entry: query=%r", body.query[:80])
         if not agent_enabled:
             raise HTTPException(status_code=404, detail="Agent chat is disabled")
         if agent_runner is None:
             raise HTTPException(status_code=503, detail="Agent runner is unavailable")
 
+        # Resolve operator identity
+        operator: OperatorContext = getattr(
+            request.state, "operator", OperatorContext(),
+        )
+        effective_operator = body.operator_id or operator.operator_id
+
         sensor_snapshot: Dict[str, Any] = {}
         affected_sensors: List[str] = []
-        if request.include_sensor_context and reg.has_tool("read_all_sensors"):
+        if body.include_sensor_context and reg.has_tool("read_all_sensors"):
             try:
                 snapshot = await reg.call("read_all_sensors", {})
                 if isinstance(snapshot, dict):
@@ -650,7 +736,7 @@ def create_app(
 
         event = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_query": request.query,
+            "user_query": body.query,
             "anomaly_score": anomaly_score,
             "affected_sensors": affected_sensors[:8],
             "context": {
@@ -667,15 +753,15 @@ def create_app(
 
         result_payload = agent_result if isinstance(agent_result, dict) else {}
         report = str(result_payload.get("report") or "No report generated.")
-        query_note = build_query_intent_note(request.query, sensor_snapshot)
-        reply_sections = [f"QUERY: {request.query}"]
+        query_note = build_query_intent_note(body.query, sensor_snapshot)
+        reply_sections = [f"QUERY: {body.query}"]
         if query_note:
             reply_sections.append(query_note)
         reply_sections.append(report)
         reply_text = "\n\n".join(reply_sections)
 
         return {
-            "query": request.query,
+            "query": body.query,
             "reply": reply_text,
             "report": report,
             "severity": str(result_payload.get("severity") or "UNKNOWN"),
@@ -685,6 +771,7 @@ def create_app(
             "context": {
                 "anomaly": anomaly_payload,
                 "sensors": affected_sensors,
+                "operator_id": effective_operator,
             },
         }
 
@@ -698,26 +785,78 @@ def create_app(
         }
 
     @app.post(anomaly_ack_path)
-    async def ui_anomaly_ack(request: AnomalyAcknowledgeRequest) -> Dict[str, Any]:
+    async def ui_anomaly_ack(
+        body: AnomalyAcknowledgeRequest, request: Request,
+    ) -> Dict[str, Any]:
         if not anomaly_ack_enabled:
             raise HTTPException(status_code=404, detail="Anomaly acknowledgment is disabled")
 
-        anomaly_id = request.anomaly_id.strip()
+        anomaly_id = body.anomaly_id.strip()
         if not anomaly_id:
             raise HTTPException(status_code=400, detail="anomaly_id must not be blank")
+
+        # Resolve operator identity
+        operator: OperatorContext = getattr(
+            request.state, "operator", OperatorContext(),
+        )
+        acknowledged_by = body.acknowledged_by.strip() or "ui"
+        if acknowledged_by == "ui" and operator.operator_id != "anonymous":
+            acknowledged_by = operator.operator_id
+        operator_source = body.operator_source or operator.source
 
         record = {
             "anomaly_id": anomaly_id,
             "acknowledged_at": datetime.now(timezone.utc).isoformat(),
-            "acknowledged_by": request.acknowledged_by.strip() or "ui",
-            "note": (request.note or "").strip(),
+            "acknowledged_by": acknowledged_by,
+            "note": (body.note or "").strip(),
+            "operator_source": operator_source,
         }
-        _upsert_anomaly_ack(anomaly_id, record)
+        ack_store.upsert(anomaly_id, record)
+        logger.info(
+            "Anomaly %s acknowledged by %s (source=%s)",
+            anomaly_id, acknowledged_by, operator_source,
+        )
 
         return {
             "ok": True,
             "acknowledgment": record,
-            "count": len(acknowledged_anomalies),
+            "count": ack_store.count(),
+        }
+
+    @app.get(anomaly_history_path)
+    async def ui_anomaly_history(
+        page: int = 1,
+        page_size: int = 0,
+        acknowledged_by: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return paginated anomaly acknowledgment history."""
+        effective_page_size = page_size if page_size > 0 else anomaly_history_page_size
+        effective_page_size = max(1, min(effective_page_size, 500))
+        effective_page = max(1, page)
+        offset = (effective_page - 1) * effective_page_size
+
+        filters: Dict[str, str] = {}
+        if acknowledged_by:
+            filters["acknowledged_by"] = acknowledged_by
+        if date_from:
+            filters["date_from"] = date_from
+        if date_to:
+            filters["date_to"] = date_to
+
+        items = ack_store.list_acks(
+            limit=effective_page_size, offset=offset, filters=filters or None,
+        )
+        total = ack_store.count(filters=filters or None)
+        total_pages = max(1, math.ceil(total / effective_page_size))
+
+        return {
+            "items": items,
+            "page": effective_page,
+            "page_size": effective_page_size,
+            "total": total,
+            "total_pages": total_pages,
         }
 
     async def stream_sensor_data(websocket: WebSocket) -> None:

@@ -379,3 +379,58 @@ class TestAgentMain:
                 mock_logger.info.assert_called()
                 log_args = str(mock_logger.info.call_args_list[-1])
                 assert "report" in log_args.lower() or "Agent" in log_args
+
+
+class TestSynthesizeWithLLM:
+    """Tests for LLM-based report synthesis in synthesize_report_node."""
+
+    def _make_state(self) -> "AgentState":
+        return {
+            "messages": [],
+            "anomaly_event": {},
+            "evidence": [{"sensor": "bme680", "data": {}}],
+            "planned_tools": [],
+            "planned_steps": [],
+            "tool_results": [
+                {"tool": "read_sensor", "args": {"sensor_id": "bme680"}, "success": True},
+            ],
+            "report": None,
+            "severity": "HIGH",
+            "needs_human_approval": False,
+            "iteration_count": 1,
+        }
+
+    def test_uses_llm_when_available(self, agent_config):
+        from agents.llm_client import MockLLMClient
+
+        mock_llm = MockLLMClient(response="## LLM Generated Report\nAll clear.")
+        agent = TricorderAgent(config=agent_config, llm_client=mock_llm)
+        result = agent.synthesize_report_node(self._make_state())
+        assert "LLM Generated Report" in result["report"]
+        assert mock_llm.call_count == 1
+
+    def test_falls_back_to_template_on_failure(self, agent_config):
+        class _FailingLLM:
+            async def generate(self, prompt, temperature=0.1, max_tokens=512):
+                raise RuntimeError("LLM down")
+
+        agent = TricorderAgent(config=agent_config, llm_client=_FailingLLM())
+        result = agent.synthesize_report_node(self._make_state())
+        assert "Tricorder Situation Report" in result["report"]
+
+    def test_falls_back_to_template_when_llm_returns_empty(self, agent_config):
+        from agents.llm_client import MockLLMClient
+
+        mock_llm = MockLLMClient(response="")
+        agent = TricorderAgent(config=agent_config, llm_client=mock_llm)
+        result = agent.synthesize_report_node(self._make_state())
+        assert "Tricorder Situation Report" in result["report"]
+
+    def test_no_llm_client_uses_template(self, agent_config):
+        agent = TricorderAgent(config=agent_config, llm_client=None)
+        result = agent.synthesize_report_node(self._make_state())
+        assert "Tricorder Situation Report" in result["report"]
+
+    def test_llm_client_param_is_optional(self, agent_config):
+        agent = TricorderAgent(config=agent_config)
+        assert agent.llm_client is None

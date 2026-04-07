@@ -635,3 +635,112 @@ class TestAnomalyAcknowledgment:
             json={"anomaly_id": "   "},
         )
         assert resp.status_code == 400
+
+
+class TestAnomalyHistory:
+    """Tests for the anomaly history pagination endpoint (F4)."""
+
+    @pytest.fixture
+    def history_client(self, sensor_registry):
+        app = create_app(config={"ui": {
+            "enabled": True, "static_dir": "src/ui/static",
+            "anomaly_ack_enabled": True, "anomaly_ack_db_path": "",
+            "anomaly_history_path": "/ui/anomalies/history",
+            "anomaly_history_page_size": 50,
+        }}, registry=sensor_registry)
+        return TestClient(app)
+
+    def test_history_empty(self, history_client):
+        resp = history_client.get("/ui/anomalies/history")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+        assert data["total_pages"] == 1
+
+    def test_history_returns_acked_items(self, history_client):
+        history_client.post("/ui/anomalies/ack", json={"anomaly_id": "h-001"})
+        history_client.post("/ui/anomalies/ack", json={"anomaly_id": "h-002"})
+        resp = history_client.get("/ui/anomalies/history")
+        data = resp.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+
+    def test_history_pagination(self, history_client):
+        for i in range(5):
+            history_client.post("/ui/anomalies/ack", json={"anomaly_id": f"h-{i:03d}"})
+        resp = history_client.get("/ui/anomalies/history?page=1&page_size=2")
+        data = resp.json()
+        assert len(data["items"]) == 2
+        assert data["total"] == 5
+        assert data["total_pages"] == 3
+
+    def test_history_filter_by_operator(self, history_client):
+        history_client.post(
+            "/ui/anomalies/ack",
+            json={"anomaly_id": "h-001", "acknowledged_by": "kirk"},
+        )
+        history_client.post(
+            "/ui/anomalies/ack",
+            json={"anomaly_id": "h-002", "acknowledged_by": "spock"},
+        )
+        resp = history_client.get("/ui/anomalies/history?acknowledged_by=kirk")
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["acknowledged_by"] == "kirk"
+
+
+class TestOperatorIdentity:
+    """Tests for operator identity propagation (F3)."""
+
+    @pytest.fixture
+    def auth_client(self, sensor_registry):
+        app = create_app(config={
+            "mcp_server": {
+                "auth_enabled": True, "api_key": "secret123",
+                "operator_map": {"secret123": "operator-kirk"},
+            },
+            "ui": {
+                "enabled": True, "static_dir": "src/ui/static",
+                "anomaly_ack_enabled": True, "anomaly_ack_db_path": "",
+            },
+        }, registry=sensor_registry)
+        return TestClient(app)
+
+    @pytest.fixture
+    def noauth_client(self, sensor_registry):
+        app = create_app(config={"ui": {
+            "enabled": True, "static_dir": "src/ui/static",
+            "anomaly_ack_enabled": True, "anomaly_ack_db_path": "",
+        }}, registry=sensor_registry)
+        return TestClient(app)
+
+    def test_anonymous_operator_default(self, noauth_client):
+        resp = noauth_client.post(
+            "/ui/anomalies/ack", json={"anomaly_id": "op-001"},
+        )
+        assert resp.status_code == 200
+        record = resp.json()["acknowledgment"]
+        assert record["acknowledged_by"] == "ui"
+        assert record["operator_source"] == "anonymous"
+
+    def test_operator_from_bearer_token(self, auth_client):
+        resp = auth_client.post(
+            "/ui/anomalies/ack",
+            json={"anomaly_id": "op-002"},
+            headers={"Authorization": "Bearer secret123"},
+        )
+        assert resp.status_code == 200
+        record = resp.json()["acknowledgment"]
+        assert record["acknowledged_by"] == "operator-kirk"
+        assert record["operator_source"] == "bearer_token"
+
+    def test_explicit_acknowledged_by_overrides_operator(self, auth_client):
+        resp = auth_client.post(
+            "/ui/anomalies/ack",
+            json={"anomaly_id": "op-003", "acknowledged_by": "spock"},
+            headers={"Authorization": "Bearer secret123"},
+        )
+        assert resp.status_code == 200
+        record = resp.json()["acknowledgment"]
+        assert record["acknowledged_by"] == "spock"

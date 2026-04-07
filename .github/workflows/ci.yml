@@ -52,3 +52,24 @@ jobs:
         with:
           name: coverage-${{ matrix.python-version }}
           path: htmlcov/
+
+  hardware:
+    runs-on: [self-hosted, rpi5]
+    continue-on-error: true
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev,hardware]"
+      - name: Run hardware tests
+        run: >
+          PYTHONPATH=src python -m pytest tests/hardware/
+          -v -m hardware --tb=short --junitxml=hardware-results.xml
+      - name: Upload hardware results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-test-results
+          path: hardware-results.xml

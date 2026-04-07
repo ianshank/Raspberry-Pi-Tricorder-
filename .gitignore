@@ -47,6 +47,7 @@ logs/*.log
 *.log
 
 # Data
+data/*.db
 data/baseline/*.npy
 data/calibration/*.json
 models/weights/*.pth

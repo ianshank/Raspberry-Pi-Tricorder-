@@ -36,6 +36,9 @@ setup(
             "pyserial>=3.5",
             "RPi.GPIO>=0.7.0",
         ],
+        "hailo": [
+            "hailort>=4.17",
+        ],
     },
     entry_points={
         "console_scripts": [

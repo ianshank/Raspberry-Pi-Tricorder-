@@ -45,7 +45,7 @@ pytest tests/ -v
 Start the server (hardware-free, simulated sensors):
 
 ```bash
-PYTHONPATH=src python -m uvicorn mcp_server.server:app --reload
+PYTHONPATH=src python -m uvicorn mcp_server.server:create_app --factory --reload
 # or
 make run
 ```
