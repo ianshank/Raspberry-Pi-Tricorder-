@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONPATH=src python -m pytest*)",
+      "Bash(ruff check*)",
+      "Bash(ruff check --fix*)",
+      "Bash(make *)",
+      "Bash(pip install*)",
+      "Bash(python -m mypy*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(git fetch*)",
+      "Bash(git push*)",
+      "Bash(git stash*)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(cat requirements.txt)",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep"
+    ],
+    "deny": [
+      "Bash(rm -rf /)*",
+      "Bash(sudo *)",
+      "Bash(chmod 777*)",
+      "Bash(curl * | bash*)",
+      "Bash(wget * | bash*)"
+    ]
+  }
+}
