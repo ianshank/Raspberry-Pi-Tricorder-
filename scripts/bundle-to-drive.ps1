@@ -49,7 +49,7 @@ if (-not $SkipBuild) {
 
 # Step 2: Verify image exists
 Write-Host "[2/6] Verifying image ..." -ForegroundColor Yellow
-$imageCheck = docker image inspect $FullImageRef 2>&1
+docker image inspect $FullImageRef 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Image '$FullImageRef' not found locally. Run without -SkipBuild." }
 Write-Host "[OK]  Image verified`n" -ForegroundColor Green
 

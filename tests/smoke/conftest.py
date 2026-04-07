@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 import httpx
 
@@ -30,6 +32,6 @@ def ws_url(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture
-def http_client(base_url: str) -> httpx.Client:
+def http_client(base_url: str) -> Iterator[httpx.Client]:
     with httpx.Client(base_url=base_url, timeout=10.0) as client:
         yield client

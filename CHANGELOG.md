@@ -1,5 +1,7 @@
 # Changelog
 
+<!-- markdownlint-configure-file { "MD024": { "siblings_only": true } } -->
+
 All notable changes to this project are documented in this file.
 
 ## [Unreleased]
@@ -122,7 +124,7 @@ All notable changes to this project are documented in this file.
 - Bootstrap tests in `test_server_coverage.py` covering default tool registration and simulated
   sensor readings (`TestDefaultToolBootstrap`).
 
-## [Unreleased] - 2026-04-05
+## [2026-04-05]
 
 ### Added
 

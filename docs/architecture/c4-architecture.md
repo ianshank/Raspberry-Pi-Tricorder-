@@ -57,7 +57,7 @@ graph LR
 ### Container Responsibilities
 
 | Container | Responsibility |
-|---|---|
+| --- | --- |
 | **Web UI** | Panelised LCARS telemetry; agent chat; anomaly ack workflow; markdown rendering |
 | **MCP Server** | Integration backbone: ToolRegistry, WS streams, auth, anomaly tracking, 404/error handling |
 | **LangGraph Agent** | `evidence_gather → plan_tools → execute_tools → synthesize_report` ReAct loop with per-tool args |
@@ -157,7 +157,7 @@ graph LR
 ## C4 - Code View Anchors
 
 | Concern | Entry Point |
-|---|---|
+| --- | --- |
 | Server bootstrap & routing | `src/mcp_server/server.py` → `create_app()` |
 | Tool registration | `src/mcp_server/server.py` → `_bootstrap_default_tools()` |
 | Simulated hardware | `src/mcp_server/server.py` → `_SimulatedSensor` |
@@ -234,7 +234,7 @@ graph LR
 ### Deployment Component Map
 
 | Script | Purpose | Invocation |
-|---|---|---|
+| --- | --- | --- |
 | `scripts/deploy.defaults.sh` | Single env-var source for all scripts | `source` by all scripts + CI |
 | `scripts/lib/health-check.sh` | `wait_for_health <url>` polling helper | Make / CI / pi-deploy / pi-load-image |
 | `scripts/pi-deploy.sh` | SSH rsync + service restart on running Pi | `make deploy PI_HOST=<ip>` |

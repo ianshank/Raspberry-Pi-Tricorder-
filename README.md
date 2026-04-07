@@ -58,15 +58,15 @@ Open `http://127.0.0.1:8000/ui/index.html`
 > Screenshot files live in [`docs/screenshots/`](docs/screenshots/CAPTURING.md). Add your own by following the capture guide there.
 
 | Dashboard — LCARS live view | Anomaly alert + ACK |
-|---|---|
+| --- | --- |
 | ![LCARS dashboard showing live sensor tiles and LIVE status indicator](docs/screenshots/dashboard-live.png) | ![Anomaly alert toast stack with ACK button highlighted](docs/screenshots/anomaly-alert.png) |
 
 | Environmental panel | Biosigns panel |
-|---|---|
+| --- | --- |
 | ![Environmental panel showing BME680 pressure humidity VOC and AS7265x spectral readings](docs/screenshots/env-panel.png) | ![Biosigns panel showing MAX30102 heart rate SpO2 and MLX90640 thermal readings](docs/screenshots/bio-panel.png) |
 
 | Engineering panel | Agent inference report |
-|---|---|
+| --- | --- |
 | ![Engineering panel showing radar presence confidence and TFMini-S LiDAR distance](docs/screenshots/eng-panel.png) | ![Agent chat panel showing completed markdown inference report](docs/screenshots/agent-chat.png) |
 
 ## Project Structure
@@ -107,7 +107,7 @@ export TRICORDER_LOGGING_LEVEL=DEBUG
 ### UI Endpoints
 
 | Endpoint | Method | Description |
-|---|---|---|
+| --- | --- | --- |
 | `/ui/index.html` | GET | Static LCARS dashboard |
 | `/ui/config.json` | GET | Runtime-safe UI configuration |
 | `/ws/sensors` | WS | Live sensor readings stream |
@@ -122,7 +122,7 @@ export TRICORDER_LOGGING_LEVEL=DEBUG
 Config keys:
 
 | Key | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `ui.anomaly_ack_enabled` | `true` | Enable/disable ack endpoint |
 | `ui.anomaly_ack_path` | `/ui/anomalies/ack` | HTTP path |
 | `ui.anomaly_ack_history_limit` | `500` | In-memory retention cap |
@@ -151,7 +151,7 @@ All tests use mocked I/O adapters — no hardware required. The simulated sensor
 ### Quality Gates
 
 | Gate | Tool | Status |
-|---|---|---|
+| --- | --- | --- |
 | Lint | `ruff check src tests` | ✅ Clean |
 | Types | `mypy --config-file mypy.ini src tests` | ✅ Clean |
 | Tests | `pytest --cov-fail-under=85` | ✅ 637 passed, 94.86% coverage |
@@ -217,24 +217,24 @@ See [`docs/architecture/c4-architecture.md`](docs/architecture/c4-architecture.m
 
 ### Medium-Term
 
-4. **Hardware CI runner**: add a Raspberry Pi self-hosted GitHub Actions runner so the full
+1. **Hardware CI runner**: add a Raspberry Pi self-hosted GitHub Actions runner so the full
    sensor driver suite is exercised in CI against real hardware. See
    [`docs/runbooks/hardware-ci-runner.md`](docs/runbooks/hardware-ci-runner.md).
-5. **Hailo-10H model deployment runbook**: document the HEF compilation, runtime setup, and
+2. **Hailo-10H model deployment runbook**: document the HEF compilation, runtime setup, and
    model hot-swap workflow for production Hailo NPU integration. See
    [`docs/runbooks/hailo-deployment.md`](docs/runbooks/hailo-deployment.md).
-6. **Persistent chat context**: extend agent sessionStorage persistence to server-side session
+3. **Persistent chat context**: extend agent sessionStorage persistence to server-side session
    storage so multi-device operator contexts can be shared.
-7. **Multi-platform registry tagging**: automate semantic-version tagging on release so GHCR
+4. **Multi-platform registry tagging**: automate semantic-version tagging on release so GHCR
    images are promoted from `sha-*` to `v1.x.y` automatically in the `publish` CI job.
 
 ### Long-Term
 
-8. **Multi-node federation**: support multiple Tricorder Pi nodes reporting to a central
+1. **Multi-node federation**: support multiple Tricorder Pi nodes reporting to a central
    aggregation service with fleet-level anomaly correlation.
-9. **Over-the-air configuration**: dynamic config reload endpoint (`PUT /admin/config`) with
+2. **Over-the-air configuration**: dynamic config reload endpoint (`PUT /admin/config`) with
    HMAC-authenticated updates so field deployments can be reconfigured without restart.
-10. **Streaming agent inference**: replace request/response agent chat with a Server-Sent
+3. **Streaming agent inference**: replace request/response agent chat with a Server-Sent
     Events stream so operators see token-by-token agent reasoning in the LCARS panel.
 
 ## Developed by

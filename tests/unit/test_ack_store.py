@@ -46,7 +46,9 @@ class TestInMemoryAckStore:
         store = InMemoryAckStore()
         store.upsert("a-001", _make_record("a-001", note="first"))
         store.upsert("a-001", _make_record("a-001", note="second"))
-        assert store.get("a-001")["note"] == "second"
+        record = store.get("a-001")
+        assert record is not None
+        assert record["note"] == "second"
         assert store.count() == 1
 
     def test_count(self) -> None:
