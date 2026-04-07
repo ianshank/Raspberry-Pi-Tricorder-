@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased] - 2026-04-07
+## [Unreleased]
 
 ### Added
 
@@ -62,7 +62,7 @@ All notable changes to this project are documented in this file.
 
 ---
 
-## [Unreleased] - 2026-04-06
+## [2026-04-06]
 
 ### Fixed
 

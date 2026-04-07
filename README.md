@@ -79,7 +79,7 @@ src/
   mcp_server/    # FastAPI MCP tool server (ToolRegistry, WS streams, auth, 404 handler)
   utils/         # Configuration (Pydantic) and structured logging
 tests/
-  unit/          # Unit tests (mocked hardware, all 637 pass)
+   unit/          # Unit tests (mocked hardware)
   integration/   # Component integration tests
   e2e/           # End-to-end pipeline tests
   regression/    # Backwards compatibility tests

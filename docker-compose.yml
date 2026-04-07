@@ -1,5 +1,6 @@
 services:
   tricorder:
+    image: ${TRICORDER_IMAGE:-tricorder-neural:latest}
     build: .
     ports:
       - "${TRICORDER_PORT:-8000}:8000"
@@ -20,7 +21,7 @@ services:
       retries: 3
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.1.32
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:

@@ -9,11 +9,13 @@ All tests should complete in under 30 seconds total.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from datetime import datetime, timezone
 
-import pytest
 import httpx
+import pytest
+import websockets
 
 
 @pytest.mark.smoke
@@ -48,12 +50,8 @@ class TestContainerSmoke:
 
     def test_websocket_sensor_stream(self, ws_url: str) -> None:
         async def _connect_once() -> dict:
-            import websockets
-
             uri = f"{ws_url}/ws/sensors"
             async with websockets.connect(uri) as ws:
-                import json
-
                 raw = await asyncio.wait_for(ws.recv(), timeout=15.0)
                 return json.loads(raw)
 

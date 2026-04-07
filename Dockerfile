@@ -13,9 +13,7 @@ WORKDIR /build
 COPY setup.py ./
 COPY src/ ./src/
 
-RUN pip wheel --no-cache-dir --wheel-dir /wheels . && \
-    pip wheel --no-cache-dir --wheel-dir /wheels \
-        pydantic pyyaml fastapi uvicorn websockets numpy structlog
+RUN pip wheel --no-cache-dir --wheel-dir /wheels .
 
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime: slim image with only what the server needs
@@ -33,13 +31,11 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels \
         tricorder-neural && \
     rm -rf /wheels
 
-COPY src/ ./src/
 COPY config/ ./config/
 
 RUN mkdir -p /app/data /app/logs
 
 # --- Default environment (simulated sensors, no hardware required) ---------
-ENV PYTHONPATH=/app/src
 ENV TRICORDER__ENVIRONMENT=development
 ENV TRICORDER__MCP_SERVER__HOST=0.0.0.0
 ENV TRICORDER__MCP_SERVER__PORT=8000

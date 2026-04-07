@@ -11,7 +11,12 @@ set -euo pipefail
 #   or:  bash firstboot-setup.sh /mnt/boot
 # =============================================================================
 
-BOOT_DIR="${1:-.}"
+BOOT_DIR="${1:?Boot directory argument is required. e.g. F: or /mnt/boot}"
+
+if [[ ! -d "${BOOT_DIR}" ]]; then
+    echo "Boot directory does not exist: ${BOOT_DIR}" >&2
+    exit 1
+fi
 
 # Enable SSH
 touch "${BOOT_DIR}/ssh"

@@ -182,7 +182,7 @@ Operational roadmap items are maintained in `README.md` under the **Next Steps**
 
 ## C5 - Deployment View
 
-Last updated: 2026-04-07
+Last updated: current branch snapshot
 
 ### Build and Publish Pipeline
 

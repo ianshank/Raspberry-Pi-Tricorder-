@@ -41,6 +41,11 @@ if [[ -f "${BUNDLE_DIR}/scripts/deploy.defaults.sh" ]]; then
     source "${BUNDLE_DIR}/scripts/deploy.defaults.sh"
 elif [[ -f "${SCRIPT_DIR}/deploy.defaults.sh" ]]; then
     source "${SCRIPT_DIR}/deploy.defaults.sh"
+else
+    error "Unable to load deploy defaults. Expected one of:"
+    error "  - ${BUNDLE_DIR}/scripts/deploy.defaults.sh"
+    error "  - ${SCRIPT_DIR}/deploy.defaults.sh"
+    exit 1
 fi
 
 # Source health-check helper

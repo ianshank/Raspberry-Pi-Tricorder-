@@ -72,10 +72,11 @@ docker-down:
 	docker compose down -v
 
 smoke-test: docker-build docker-up
-	@echo "Waiting for container to become healthy..."
-	@bash scripts/lib/health-check.sh "$(SMOKE_URL)/health" "$(HEALTH_CHECK_MAX_RETRIES)" "$(HEALTH_CHECK_RETRY_DELAY_S)" "$(HEALTH_CHECK_CONNECT_TIMEOUT_S)" "Tricorder container"
+	@set -e; \
+	trap 'docker compose down -v' EXIT; \
+	echo "Waiting for container to become healthy..."; \
+	bash scripts/lib/health-check.sh "$(SMOKE_URL)/health" "$(HEALTH_CHECK_MAX_RETRIES)" "$(HEALTH_CHECK_RETRY_DELAY_S)" "$(HEALTH_CHECK_CONNECT_TIMEOUT_S)" "Tricorder container"; \
 	$(PYTEST_CMD) tests/smoke/ -v -m smoke --smoke-url $(SMOKE_URL) --smoke-ws-url $(SMOKE_WS_URL)
-	docker compose down -v
 
 deploy:
 	@if [ -z "$(PI_HOST)" ]; then echo "Usage: make deploy PI_HOST=<ip>"; exit 1; fi
@@ -95,6 +96,7 @@ docker-build-arm64:
 	docker buildx build --platform $(TRICORDER_PLATFORM) --tag $(FULL_IMAGE_REF) --load .
 
 docker-push:
+	@if [ -z "$(TRICORDER_REGISTRY_OWNER)" ]; then echo "TRICORDER_REGISTRY_OWNER is required (example: make docker-push TRICORDER_REGISTRY_OWNER=your-github-username)"; exit 1; fi
 	docker tag $(FULL_IMAGE_REF) $(REGISTRY_REF)
 	docker push $(REGISTRY_REF)
 
