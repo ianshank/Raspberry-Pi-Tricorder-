@@ -32,6 +32,7 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels \
     rm -rf /wheels
 
 COPY config/ ./config/
+COPY src/ui/static/ ./src/ui/static/
 
 RUN mkdir -p /app/data /app/logs
 
