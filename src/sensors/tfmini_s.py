@@ -6,8 +6,8 @@ import struct
 import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    BaseSensor, SensorReading,
+    SensorCommunicationError, SensorFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,57 +73,41 @@ class TFMiniSSensor(BaseSensor):
                 }
         return None
 
-    def initialize(self) -> bool:
-        try:
-            # Send version query command
-            self.adapter.write(self.commands["version_query"])
-            self.adapter.flush()
-            response = self.adapter.read(32)
+    def _do_initialize(self) -> bool:
+        # Send version query command
+        self.adapter.write(self.commands["version_query"])
+        self.adapter.flush()
+        response = self.adapter.read(32)
 
-            if not response:
-                logger.warning("%s no version response, continuing anyway", self.sensor_id)
+        if not response:
+            logger.warning("%s no version response, continuing anyway", self.sensor_id)
 
-            # Set output mode to standard (9-byte frames)
-            self.adapter.write(self.commands["output_standard"])
-            self.adapter.flush()
+        # Set output mode to standard (9-byte frames)
+        self.adapter.write(self.commands["output_standard"])
+        self.adapter.flush()
 
-            self.status = SensorStatus.READY
-            logger.info("%s initialized", self.sensor_id)
-            return True
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"TFmini-S init failed: {e}") from e
+        logger.info("%s initialized", self.sensor_id)
+        return True
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
+    def _do_read(self) -> SensorReading:
+        raw_data = self.adapter.read(self.FRAME_LENGTH * 3)
+        if not raw_data:
+            raise SensorCommunicationError("No data from TFmini-S")
 
-            raw_data = self.adapter.read(self.FRAME_LENGTH * 3)
-            if not raw_data:
-                raise SensorCommunicationError("No data from TFmini-S")
+        parsed = self._parse_frame(raw_data)
+        if parsed is None:
+            raise SensorCommunicationError("Invalid frame from TFmini-S")
 
-            parsed = self._parse_frame(raw_data)
-            if parsed is None:
-                raise SensorCommunicationError("Invalid frame from TFmini-S")
+        confidence = self.confidence if parsed["valid"] else self.low_confidence
 
-            confidence = self.confidence if parsed["valid"] else self.low_confidence
-
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value=parsed,
-                unit="cm",
-                confidence=confidence,
-                metadata={"port": self.port},
-            )
-            self._record_reading(reading)
-            return reading
-        except SensorCommunicationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"TFmini-S read failed: {e}") from e
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value=parsed,
+            unit="cm",
+            confidence=confidence,
+            metadata={"port": self.port},
+        )
 
 
 SensorFactory.register("tfmini_s", TFMiniSSensor)

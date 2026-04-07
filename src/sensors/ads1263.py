@@ -6,7 +6,7 @@ import logging
 
 from sensors.base import (
     BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    SensorInitializationError, SensorFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,37 +71,29 @@ class ADS1263Sensor(BaseSensor):
         cmd = [self.commands["wreg"] | reg, 0x00, value]
         self.adapter.xfer2(cmd)
 
-    def initialize(self) -> bool:
-        try:
-            self.adapter.open(self.bus, self.device)
+    def _do_initialize(self) -> bool:
+        self.adapter.open(self.bus, self.device)
 
-            # Send reset command
-            self.adapter.xfer2([self.commands["reset"]])
+        # Send reset command
+        self.adapter.xfer2([self.commands["reset"]])
 
-            # Read device ID
-            device_id = self._read_register(self.registers["id"])
-            if (device_id & 0x1F) != self.expected_id:
-                raise SensorInitializationError(
-                    f"ADS1263 ID mismatch: expected 0x{self.expected_id:02X}, "
-                    f"got 0x{device_id:02X}"
-                )
+        # Read device ID
+        device_id = self._read_register(self.registers["id"])
+        if (device_id & 0x1F) != self.expected_id:
+            raise SensorInitializationError(
+                f"ADS1263 ID mismatch: expected 0x{self.expected_id:02X}, "
+                f"got 0x{device_id:02X}"
+            )
 
-            # Configure: internal reference, filter mode
-            self._write_register(self.registers["ref"], self.init_config["ref_value"])
-            self._write_register(self.registers["mode2"], self.init_config["filter_value"])
+        # Configure: internal reference, filter mode
+        self._write_register(self.registers["ref"], self.init_config["ref_value"])
+        self._write_register(self.registers["mode2"], self.init_config["filter_value"])
 
-            # Start conversion
-            self.adapter.xfer2([self.commands["start1"]])
+        # Start conversion
+        self.adapter.xfer2([self.commands["start1"]])
 
-            self.status = SensorStatus.READY
-            logger.info("%s initialized (ID: 0x%02X)", self.sensor_id, device_id)
-            return True
-        except SensorInitializationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"ADS1263 init failed: {e}") from e
+        logger.info("%s initialized (ID: 0x%02X)", self.sensor_id, device_id)
+        return True
 
     def read_channel(self, positive_input: int, negative_input: int) -> float:
         """Read a single differential channel pair."""
@@ -129,35 +121,27 @@ class ADS1263Sensor(BaseSensor):
 
         return round(voltage, 6)
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
-
-            channel_readings: Dict[str, float] = {}
-            for name, ch_config in self.channels.items():
-                voltage = self.read_channel(
-                    ch_config.get("positive_input", 0),
-                    ch_config.get("negative_input", 1),
-                )
-                channel_readings[name] = voltage
-
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value={
-                    "channels": channel_readings,
-                    "channel_count": len(channel_readings),
-                    "vref": self.vref,
-                },
-                unit="volts",
-                confidence=self.confidence,
-                metadata={"spi_bus": self.bus, "spi_device": self.device},
+    def _do_read(self) -> SensorReading:
+        channel_readings: Dict[str, float] = {}
+        for name, ch_config in self.channels.items():
+            voltage = self.read_channel(
+                ch_config.get("positive_input", 0),
+                ch_config.get("negative_input", 1),
             )
-            self._record_reading(reading)
-            return reading
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"ADS1263 read failed: {e}") from e
+            channel_readings[name] = voltage
+
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value={
+                "channels": channel_readings,
+                "channel_count": len(channel_readings),
+                "vref": self.vref,
+            },
+            unit="volts",
+            confidence=self.confidence,
+            metadata={"spi_bus": self.bus, "spi_device": self.device},
+        )
 
     def reset(self) -> bool:
         try:

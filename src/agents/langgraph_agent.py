@@ -10,6 +10,8 @@ from enum import Enum
 import logging
 import operator
 
+from utils.constants import DEFAULT_SEVERITY_THRESHOLDS, SEVERITY_LEVELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,12 +75,8 @@ class TricorderAgent:
     - synthesize_report: Generates situation report
     """
 
-    DEFAULT_SEVERITY_THRESHOLDS = {
-        "critical": 0.9,
-        "high": 0.75,
-        "medium": 0.5,
-    }
-    SEVERITY_LEVELS = ("critical", "high", "medium")
+    DEFAULT_SEVERITY_THRESHOLDS = DEFAULT_SEVERITY_THRESHOLDS
+    SEVERITY_LEVELS = SEVERITY_LEVELS
     DEFAULT_MAX_TOOLS_PER_ITERATION = 3
     DEFAULT_MAX_ITERATIONS = 5
 
@@ -197,6 +195,7 @@ class TricorderAgent:
 
     def sensor_monitor_node(self, state: AgentState) -> Dict[str, Any]:
         """Entry node: receive and classify anomaly event."""
+        logger.debug("sensor_monitor_node entry")
         event_raw = state.get("anomaly_event", {})
         event = event_raw if isinstance(event_raw, dict) else {}
         anomaly_score = event.get("anomaly_score", 0.0)
@@ -226,6 +225,7 @@ class TricorderAgent:
 
     def evidence_gather_node(self, state: AgentState) -> Dict[str, Any]:
         """Gather additional sensor evidence based on anomaly context."""
+        logger.debug("evidence_gather_node entry")
         event_raw = state.get("anomaly_event", {})
         event = event_raw if isinstance(event_raw, dict) else {}
         affected_sensors = event.get("affected_sensors", [])
@@ -254,6 +254,7 @@ class TricorderAgent:
 
     def plan_tools_node(self, state: AgentState) -> Dict[str, Any]:
         """Plan which tools to execute next."""
+        logger.debug("plan_tools_node entry")
         planned_steps = state.get("planned_steps", [])
         if planned_steps:
             executed_keys = set()
@@ -280,6 +281,7 @@ class TricorderAgent:
 
     def execute_tools_node(self, state: AgentState) -> Dict[str, Any]:
         """Execute planned tools via MCP tool caller."""
+        logger.debug("execute_tools_node entry")
         planned_steps = state.get("planned_steps", [])
         planned = state.get("planned_tools", [])
         results = []
@@ -321,6 +323,7 @@ class TricorderAgent:
 
     def synthesize_report_node(self, state: AgentState) -> Dict[str, Any]:
         """Generate final situation report from gathered evidence."""
+        logger.debug("synthesize_report_node entry")
         severity = state.get("severity", "LOW")
         evidence_items = state.get("evidence", [])
         tool_results = state.get("tool_results", [])

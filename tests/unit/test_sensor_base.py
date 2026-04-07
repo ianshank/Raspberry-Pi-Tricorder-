@@ -69,9 +69,14 @@ class TestSensorStatus:
 
 
 class TestBaseSensorAbstract:
-    def test_cannot_instantiate(self):
-        with pytest.raises(TypeError):
-            BaseSensor("test", Mock(), {})
+    def test_unimplemented_do_methods_raise(self):
+        """BaseSensor can be instantiated but _do_initialize/_do_read raise via template."""
+        from sensors.base import SensorInitializationError, SensorCommunicationError
+        sensor = BaseSensor("test", Mock(), {})
+        with pytest.raises(SensorInitializationError):
+            sensor.initialize()
+        with pytest.raises(SensorCommunicationError):
+            sensor.read()
 
     def test_concrete_subclass(self):
         class ConcreteSensor(BaseSensor):

@@ -6,7 +6,7 @@ import struct
 import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorStatus,
+    BaseSensor, SensorReading,
     SensorInitializationError, SensorCommunicationError, SensorFactory,
 )
 
@@ -96,63 +96,44 @@ class HLKLD2410Sensor(BaseSensor):
             "detection_distance_cm": detect_distance,
         }
 
-    def initialize(self) -> bool:
-        try:
-            # Enable configuration mode
-            response = self._send_command(
-                self.command_words["enable_config"], b'\x01\x00',
-            )
-            if response is None:
-                raise SensorInitializationError("No response from LD2410")
+    def _do_initialize(self) -> bool:
+        # Enable configuration mode
+        response = self._send_command(
+            self.command_words["enable_config"], b'\x01\x00',
+        )
+        if response is None:
+            raise SensorInitializationError("No response from LD2410")
 
-            # Read firmware version
-            fw_response = self._send_command(self.command_words["read_firmware"])
-            logger.debug("%s firmware response: %s",
-                         self.sensor_id,
-                         fw_response.hex() if fw_response else "none")
+        # Read firmware version
+        fw_response = self._send_command(self.command_words["read_firmware"])
+        logger.debug("%s firmware response: %s",
+                     self.sensor_id,
+                     fw_response.hex() if fw_response else "none")
 
-            # End configuration mode
-            self._send_command(self.command_words["end_config"])
+        # End configuration mode
+        self._send_command(self.command_words["end_config"])
 
-            self.status = SensorStatus.READY
-            logger.info("%s initialized", self.sensor_id)
-            return True
-        except SensorInitializationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"LD2410 init failed: {e}") from e
+        logger.info("%s initialized", self.sensor_id)
+        return True
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
+    def _do_read(self) -> SensorReading:
+        # Read data frame from UART
+        raw_data = self.adapter.read(256)
+        if not raw_data:
+            raise SensorCommunicationError("No data from LD2410")
 
-            # Read data frame from UART
-            raw_data = self.adapter.read(256)
-            if not raw_data:
-                raise SensorCommunicationError("No data from LD2410")
+        parsed = self._parse_data_frame(raw_data)
+        if parsed is None:
+            raise SensorCommunicationError("Invalid frame from LD2410")
 
-            parsed = self._parse_data_frame(raw_data)
-            if parsed is None:
-                raise SensorCommunicationError("Invalid frame from LD2410")
-
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value=parsed,
-                unit="composite",
-                confidence=self.confidence,
-                metadata={"port": self.port},
-            )
-            self._record_reading(reading)
-            return reading
-        except SensorCommunicationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"LD2410 read failed: {e}") from e
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value=parsed,
+            unit="composite",
+            confidence=self.confidence,
+            metadata={"port": self.port},
+        )
 
 
 SensorFactory.register("hlk_ld2410", HLKLD2410Sensor)

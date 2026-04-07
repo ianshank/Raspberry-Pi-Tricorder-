@@ -16,12 +16,14 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 
+from mcp_server.anomaly_helpers import (
+    coerce_bool as _coerce_bool,
+    coerce_float as _coerce_float,
+    severity_from_score as _severity_from_score,
+    extract_anomaly_summary as _extract_anomaly_summary,
+)
 from mcp_server.server import (
     ToolRegistry,
-    _coerce_bool,
-    _coerce_float,
-    _severity_from_score,
-    _extract_anomaly_summary,
     create_app,
     MCPServerError,
     ToolExecutionError,
