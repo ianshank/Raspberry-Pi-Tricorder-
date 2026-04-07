@@ -1,4 +1,5 @@
 """Regression tests for config migration and forward/backward compatibility."""
+from __future__ import annotations
 
 import pytest
 from utils.config import TricorderConfig, load_config, SensorConfig, I2CDeviceConfig
@@ -67,3 +68,30 @@ sensors:
         assert "bme680" in config.sensors.i2c_devices
         assert len(config.sensors.spi_devices) == 0
         assert len(config.sensors.uart_devices) == 0
+
+
+@pytest.mark.regression
+class TestNewFieldDefaults:
+    """Ensure new config fields have backward-compatible defaults."""
+
+    def test_feature_flags_llm_enabled_defaults_false(self):
+        from utils.config import FeatureFlagsConfig
+        flags = FeatureFlagsConfig()
+        assert flags.llm_enabled is False
+
+    def test_ui_config_new_fields_have_defaults(self):
+        from utils.config import TricorderConfig
+        config = TricorderConfig()
+        assert config.ui.anomaly_ack_db_path == "data/anomaly_ack.db"
+        assert config.ui.anomaly_history_path == "/ui/anomalies/history"
+        assert config.ui.anomaly_history_page_size == 50
+
+    def test_mcp_server_operator_map_defaults_empty(self):
+        from utils.config import MCPServerConfig
+        cfg = MCPServerConfig()
+        assert cfg.operator_map == {}
+
+    def test_agent_config_llm_timeout_default(self):
+        from utils.config import LangGraphAgentConfig
+        cfg = LangGraphAgentConfig()
+        assert cfg.llm_timeout_s == 30.0

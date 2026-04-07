@@ -28,6 +28,7 @@ from mcp_server.server import (
     MCPServerError,
     ToolExecutionError,
     AuthenticationError,
+    _resolve_static_dir,
 )
 
 
@@ -120,6 +121,16 @@ class TestCoerceFloat:
 
     def test_string_non_numeric_returns_none(self):
         assert _coerce_float("bad") is None
+
+
+class TestResolveStaticDir:
+    def test_prefers_current_working_directory_for_relative_paths(self, monkeypatch, tmp_path):
+        static_dir = tmp_path / "src" / "ui" / "static"
+        static_dir.mkdir(parents=True)
+
+        monkeypatch.chdir(tmp_path)
+
+        assert _resolve_static_dir("src/ui/static") == static_dir.resolve()
 
 
 class TestExtractAnomalySummaryWithThresholds:

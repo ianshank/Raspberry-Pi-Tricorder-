@@ -182,8 +182,15 @@ def _resolve_static_dir(static_dir: str) -> Path:
     path = Path(static_dir)
     if path.is_absolute():
         return path
-    repo_root = Path(__file__).resolve().parents[2]
-    return (repo_root / path).resolve()
+
+    candidates = [
+        (Path.cwd() / path).resolve(),
+        (Path(__file__).resolve().parents[2] / path).resolve(),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def _iter_enabled_sensor_ids(sensors_config: Dict[str, Any]) -> List[str]:
@@ -414,6 +421,7 @@ def create_app(
     ui_enabled = bool(ui_config.get("enabled", False))
     ui_static_dir = _resolve_static_dir(ui_config.get("static_dir", "src/ui/static"))
     ui_static_available = ui_static_dir.exists()
+    logger.debug("Resolved UI static dir=%s exists=%s", ui_static_dir, ui_static_available)
     if ui_enabled and not ui_static_available:
         logger.warning("UI static directory does not exist: %s", ui_static_dir)
 

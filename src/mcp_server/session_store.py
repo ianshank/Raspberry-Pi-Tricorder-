@@ -15,6 +15,8 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
@@ -108,8 +110,6 @@ class InMemorySessionStore:
         }
 
     def cleanup_expired(self, ttl_seconds: int) -> int:
-        cutoff = datetime.now(timezone.utc).isoformat()
-        # Compute cutoff timestamp
         from datetime import timedelta
 
         cutoff_dt = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
@@ -163,7 +163,7 @@ class SqliteSessionStore:
         session_id = f"sess-{uuid4().hex[:16]}"
         now = datetime.now(timezone.utc).isoformat()
         with self._write_lock:
-            with self._connect() as conn:
+            with self._connection() as conn:
                 conn.execute(
                     "INSERT INTO chat_sessions "
                     "(session_id, operator_id, messages, created_at, updated_at) "
@@ -174,7 +174,7 @@ class SqliteSessionStore:
         return session_id
 
     def get_messages(self, session_id: str) -> List[Dict[str, Any]]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT messages FROM chat_sessions WHERE session_id = ?",
                 (session_id,),
@@ -185,7 +185,7 @@ class SqliteSessionStore:
 
     def append_message(self, session_id: str, message: Dict[str, Any]) -> None:
         with self._write_lock:
-            with self._connect() as conn:
+            with self._connection() as conn:
                 row = conn.execute(
                     "SELECT messages FROM chat_sessions WHERE session_id = ?",
                     (session_id,),
@@ -204,7 +204,7 @@ class SqliteSessionStore:
                 conn.commit()
 
     def get_session_info(self, session_id: str) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT session_id, operator_id, messages, created_at, updated_at "
                 "FROM chat_sessions WHERE session_id = ?",
@@ -225,7 +225,7 @@ class SqliteSessionStore:
 
         cutoff = (datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)).isoformat()
         with self._write_lock:
-            with self._connect() as conn:
+            with self._connection() as conn:
                 cursor = conn.execute(
                     "DELETE FROM chat_sessions WHERE updated_at < ?",
                     (cutoff,),
@@ -244,12 +244,20 @@ class SqliteSessionStore:
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        conn = self._connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def _ensure_parent_dir(self) -> None:
         parent = Path(self._db_path).parent
         parent.mkdir(parents=True, exist_ok=True)
 
     def _ensure_schema(self) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.executescript(_SCHEMA_SQL + _INDEX_SQL)
             conn.commit()
         logger.debug("Session store schema verified")

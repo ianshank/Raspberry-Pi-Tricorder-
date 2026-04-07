@@ -58,15 +58,15 @@ Open `http://127.0.0.1:8000/ui/index.html`
 > Screenshot files live in [`docs/screenshots/`](docs/screenshots/CAPTURING.md). Add your own by following the capture guide there.
 
 | Dashboard — LCARS live view | Anomaly alert + ACK |
-|---|---|
+| --- | --- |
 | ![LCARS dashboard showing live sensor tiles and LIVE status indicator](docs/screenshots/dashboard-live.png) | ![Anomaly alert toast stack with ACK button highlighted](docs/screenshots/anomaly-alert.png) |
 
 | Environmental panel | Biosigns panel |
-|---|---|
+| --- | --- |
 | ![Environmental panel showing BME680 pressure humidity VOC and AS7265x spectral readings](docs/screenshots/env-panel.png) | ![Biosigns panel showing MAX30102 heart rate SpO2 and MLX90640 thermal readings](docs/screenshots/bio-panel.png) |
 
 | Engineering panel | Agent inference report |
-|---|---|
+| --- | --- |
 | ![Engineering panel showing radar presence confidence and TFMini-S LiDAR distance](docs/screenshots/eng-panel.png) | ![Agent chat panel showing completed markdown inference report](docs/screenshots/agent-chat.png) |
 
 ## Project Structure
@@ -79,11 +79,12 @@ src/
   mcp_server/    # FastAPI MCP tool server (ToolRegistry, WS streams, auth, 404 handler)
   utils/         # Configuration (Pydantic) and structured logging
 tests/
-  unit/          # Unit tests (mocked hardware, all 452 pass)
+   unit/          # Unit tests (mocked hardware)
   integration/   # Component integration tests
   e2e/           # End-to-end pipeline tests
   regression/    # Backwards compatibility tests
-  sanity/        # Smoke tests and import validation
+  sanity/        # Import validation
+  smoke/         # Container smoke tests (requires running server)
 config/
   base.yaml      # Default configuration
 docs/
@@ -106,7 +107,7 @@ export TRICORDER_LOGGING_LEVEL=DEBUG
 ### UI Endpoints
 
 | Endpoint | Method | Description |
-|---|---|---|
+| --- | --- | --- |
 | `/ui/index.html` | GET | Static LCARS dashboard |
 | `/ui/config.json` | GET | Runtime-safe UI configuration |
 | `/ws/sensors` | WS | Live sensor readings stream |
@@ -121,7 +122,7 @@ export TRICORDER_LOGGING_LEVEL=DEBUG
 Config keys:
 
 | Key | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `ui.anomaly_ack_enabled` | `true` | Enable/disable ack endpoint |
 | `ui.anomaly_ack_path` | `/ui/anomalies/ack` | HTTP path |
 | `ui.anomaly_ack_history_limit` | `500` | In-memory retention cap |
@@ -150,41 +151,90 @@ All tests use mocked I/O adapters — no hardware required. The simulated sensor
 ### Quality Gates
 
 | Gate | Tool | Status |
-|---|---|---|
+| --- | --- | --- |
 | Lint | `ruff check src tests` | ✅ Clean |
 | Types | `mypy --config-file mypy.ini src tests` | ✅ Clean |
-| Tests | `pytest --cov-fail-under=85` | ✅ 452 passed, 94.30% coverage |
+| Tests | `pytest --cov-fail-under=85` | ✅ 637 passed, 94.86% coverage |
 | Security | `bandit -r src/ -ll` | ✅ 0 High, 0 Medium |
+
+## Docker Deployment
+
+### Quick Docker run (local)
+
+```bash
+docker compose up -d
+curl http://localhost:8000/health
+```
+
+### Build arm64 image for Raspberry Pi
+
+```bash
+make docker-build-arm64              # buildx linux/arm64, locally loaded
+make docker-push TRICORDER_REGISTRY_OWNER=your-github-username   # push to GHCR
+```
+
+### Create offline bundle (Windows → SD card / USB)
+
+```powershell
+# Insert SD card / USB at F:
+.\scripts\bundle-to-drive.ps1 -TargetDrive F
+# Eject and insert into Pi
+```
+
+### First-boot Pi setup (before ejecting SD)
+
+```bash
+# Set SSH enabled, hostname, and WiFi credentials on the boot partition
+PI_HOSTNAME=tricorder PI_WIFI_SSID=MyNet PI_WIFI_PASSWORD=secret \
+  bash scripts/firstboot/firstboot-setup.sh F:
+```
+
+### Deploy from offline bundle on Pi
+
+```bash
+sudo mount /dev/sda1 /mnt/usb
+sudo bash /mnt/usb/tricorder-deploy/scripts/pi-load-image.sh /mnt/usb/tricorder-deploy
+```
+
+### Deploy to running Pi over SSH
+
+```bash
+make deploy PI_HOST=tricorder.local
+```
+
+See [`docs/architecture/c4-architecture.md`](docs/architecture/c4-architecture.md) §C5 for the full deployment architecture and script reference.
 
 ## Next Steps
 
 ### Near-Term (highest priority)
 
-1. **Persistent anomaly acknowledgment state**: move ACK tracking from in-memory dict to SQLite
-   so state survives service restarts and multiple operator sessions.
-2. **Agent LLM integration**: connect `TricorderAgent` to a real Ollama / Hailo-backed LLM
+1. **Agent LLM integration**: connect `TricorderAgent` to a real Ollama / Hailo-backed LLM
    endpoint so `synthesize_report_node` generates contextual text rather than template output.
+2. **UI anomaly history panel**: surface acknowledged anomaly history with filtering and export
+   for operator audit and post-incident review.
 3. **Operator identity propagation**: pass authenticated operator identity through anomaly
    acknowledgment records for a full operator audit trail.
 
 ### Medium-Term
 
-4. **UI anomaly history panel**: surface acknowledged anomaly history with filtering and export
-   for operator audit and post-incident review.
-5. **Hardware CI runner**: add a Raspberry Pi self-hosted GitHub Actions runner so the full
-   sensor driver suite is exercised in CI against real hardware.
-6. **Hailo-10H model deployment runbook**: document the HEF compilation, runtime setup, and
-   model hot-swap workflow for production Hailo NPU integration.
-7. **Persistent chat context**: extend agent sessionStorage persistence to server-side session
+1. **Hardware CI runner**: add a Raspberry Pi self-hosted GitHub Actions runner so the full
+   sensor driver suite is exercised in CI against real hardware. See
+   [`docs/runbooks/hardware-ci-runner.md`](docs/runbooks/hardware-ci-runner.md).
+2. **Hailo-10H model deployment runbook**: document the HEF compilation, runtime setup, and
+   model hot-swap workflow for production Hailo NPU integration. See
+   [`docs/runbooks/hailo-deployment.md`](docs/runbooks/hailo-deployment.md).
+3. **Persistent chat context**: extend agent sessionStorage persistence to server-side session
    storage so multi-device operator contexts can be shared.
+4. **Multi-platform registry tagging**: automate semantic-version tagging on release so GHCR
+   images are promoted from `sha-*` to `v1.x.y` automatically in the `publish` CI job.
 
 ### Long-Term
 
-8. **Multi-node federation**: support multiple Tricorder Pi nodes reporting to a central
+1. **Multi-node federation**: support multiple Tricorder Pi nodes reporting to a central
    aggregation service with fleet-level anomaly correlation.
-9. **Over-the-air configuration**: dynamic config reload endpoint (`PUT /admin/config`) with
+2. **Over-the-air configuration**: dynamic config reload endpoint (`PUT /admin/config`) with
    HMAC-authenticated updates so field deployments can be reconfigured without restart.
-10. **Streaming agent inference**: replace request/response agent chat with a Server-Sent
+3. **Streaming agent inference**: replace request/response agent chat with a Server-Sent
     Events stream so operators see token-by-token agent reasoning in the LCARS panel.
 
 ## Developed by

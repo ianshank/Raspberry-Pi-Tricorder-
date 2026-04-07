@@ -1,4 +1,5 @@
 """Regression tests ensuring backwards compatibility."""
+from __future__ import annotations
 
 import pytest
 from datetime import datetime, timezone
@@ -147,3 +148,52 @@ class TestModelCompat:
         assert hasattr(ModelRegistry, 'create')
         assert hasattr(ModelRegistry, 'get')
         assert hasattr(ModelRegistry, 'list_types')
+
+
+@pytest.mark.regression
+class TestAPIResponseSchemaCompat:
+    """Ensure API response shapes remain stable."""
+
+    @pytest.fixture
+    def api_client(self, tmp_path):
+        from fastapi.testclient import TestClient
+        from mcp_server.server import create_app, ToolRegistry
+        registry = ToolRegistry()
+        static_dir = TricorderConfig().ui.static_dir
+        ack_db_path = str(tmp_path / "compat-ack.db")
+
+        @registry.register(name="read_all_sensors", description="Read all", input_schema={"type": "object"})
+        def read_all_sensors():
+            return {"bme680": {"value": {"temperature_c": 22.0}}}
+
+        app = create_app(
+            config={
+                "ui": {
+                    "enabled": True,
+                    "static_dir": static_dir,
+                    "anomaly_ack_enabled": True,
+                    "anomaly_ack_db_path": ack_db_path,
+                }
+            },
+            registry=registry,
+        )
+        return TestClient(app)
+
+    def test_ack_response_has_required_keys(self, api_client):
+        resp = api_client.post("/ui/anomalies/ack", json={"anomaly_id": "compat-001"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "ok" in data
+        assert "acknowledgment" in data
+        assert "count" in data
+
+    def test_agent_chat_request_without_operator_id(self):
+        from mcp_server.server import AgentChatRequest
+        req = AgentChatRequest(query="hello")
+        assert req.operator_id is None
+
+    def test_ack_request_without_operator_source(self):
+        from mcp_server.server import AnomalyAcknowledgeRequest
+        req = AnomalyAcknowledgeRequest(anomaly_id="a-1")
+        assert req.operator_source is None
+        assert req.acknowledged_by == "ui"

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
@@ -169,7 +171,7 @@ class SqliteAckStore:
     # -- protocol methods ---------------------------------------------------
 
     def upsert(self, anomaly_id: str, record: Dict[str, Any]) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO anomaly_acks "
                 "(anomaly_id, acknowledged_at, acknowledged_by, note, operator_source) "
@@ -186,7 +188,7 @@ class SqliteAckStore:
         self._maybe_evict()
 
     def get(self, anomaly_id: str) -> Optional[Dict[str, Any]]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT * FROM anomaly_acks WHERE anomaly_id = ?",
                 (anomaly_id,),
@@ -208,7 +210,7 @@ class SqliteAckStore:
             query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY acknowledged_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
@@ -218,12 +220,12 @@ class SqliteAckStore:
         clauses = self._build_where_clauses(filters, params)
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(query, params).fetchone()
         return int(row[0]) if row else 0
 
     def evict(self, max_records: int) -> int:
-        with self._connect() as conn:
+        with self._connection() as conn:
             cursor = conn.execute(
                 "DELETE FROM anomaly_acks WHERE anomaly_id NOT IN "
                 "(SELECT anomaly_id FROM anomaly_acks "
@@ -241,12 +243,20 @@ class SqliteAckStore:
         conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        conn = self._connect()
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def _ensure_parent_dir(self) -> None:
         parent = Path(self._db_path).parent
         parent.mkdir(parents=True, exist_ok=True)
 
     def _ensure_schema(self) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.executescript(_SCHEMA_SQL + _INDEX_SQL)
             conn.commit()
         logger.debug("ACK store schema verified")

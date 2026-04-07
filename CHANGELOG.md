@@ -1,8 +1,70 @@
 # Changelog
 
+<!-- markdownlint-configure-file { "MD024": { "siblings_only": true } } -->
+
 All notable changes to this project are documented in this file.
 
-## [Unreleased] - 2026-04-06
+## [Unreleased]
+
+### Added
+
+- **Docker build pipeline**: multi-stage `Dockerfile` (builder + runtime), `docker-compose.yml`
+  with env-var port/host overrides, and `.dockerignore` to minimise image layers.
+- **GHCR publish CI job** (`.github/workflows/ci.yml`): `docker/setup-buildx-action`, QEMU for
+  arm64+amd64, `docker/metadata-action` tags (sha, branch, semver, latest), and `build-push-action`
+  cache via GitHub Actions cache; triggered on `main` push and `refs/tags/v*`.
+- **Docker smoke CI job**: builds image, starts container, calls shared `health-check.sh`,
+  and runs `tests/smoke/` against the live container; tears down with `docker compose down -v`.
+- **Shared deploy defaults** (`scripts/deploy.defaults.sh`): single env-var source for SSH,
+  runtime, health-check, Docker image/registry, and offline bundle settings.
+- **Reusable health-check helper** (`scripts/lib/health-check.sh`): `wait_for_health <url>
+  [max_retries] [delay] [timeout] [label]`; used by Makefile, CI, and all Pi scripts.
+- **Pi deployment scripts** (`scripts/pi-deploy.sh`, `pi-install.sh`, `pi-configure.sh`):
+  SSH-based deploy via rsync, systemd service unit with parameterised port/host/environment,
+  and hardware interface setup — all sourcing shared defaults and health-check helper.
+- **Offline bundle script** (`scripts/bundle-to-drive.ps1`): PowerShell 6-step pipeline —
+  `docker buildx` arm64 build → verify → mkdir on target drive → `docker save` tar → copy
+  deployment artifacts → SHA256SUMS checksum file; targets SD card / USB letter drive.
+- **Pi offline loader** (`scripts/pi-load-image.sh`): Bash — verifies bundle + checksums,
+  installs Docker if missing, `docker load`, sets up `/opt/tricorder`, and runs health check.
+- **First-boot SD setup** (`scripts/firstboot/firstboot-setup.sh`): writes `ssh` flag,
+  `hostname.txt`, and `wpa_supplicant.conf` to the boot partition for unattended Pi first-boot.
+- **Shared rsync exclusions** (`scripts/rsync-excludes.txt`): single exclude list consumed
+  by both `pi-deploy.sh` and `pi-install.sh`.
+- **pytest markers** (`pytest.ini`): added `smoke` (container/server smoke tests) and
+  `ollama` (requires running Ollama instance) markers.
+- **Regression tests for API schema stability** (`tests/regression/test_backwards_compat.py`):
+  `TestAPIResponseSchemaCompat` — ack response keys, optional `operator_id`, default
+  `operator_source`.
+- **Regression tests for new config field defaults** (`tests/regression/test_config_migration.py`):
+  `TestNewFieldDefaults` — `llm_enabled`, UI ack DB path, `operator_map`, `llm_timeout_s`.
+- **E2E tests expanded** (`tests/e2e/test_full_pipeline.py`): full sensor→anomaly→agent chain,
+  chat endpoint with sensor context, operator identity propagation, anomaly history after ACK.
+- **Integration tests** (`tests/integration/`): `test_ack_store_integration.py`,
+  `test_config_integration.py`, `test_session_store_integration.py` — all using store APIs only
+  (no raw SQL mutation).
+- **Smoke tests** (`tests/smoke/test_container_smoke.py`): WebSocket retry loop, 120 s
+  timestamp tolerance, 15 s `asyncio.wait_for` timeout.
+
+### Changed
+
+- **Makefile** fully parameterised: `COVERAGE_FAIL_UNDER`, `TRICORDER_PORT`, `SMOKE_URL`,
+  `HEALTH_CHECK_*` variables; `PYTEST_CMD = PYTHONPATH=src python -m pytest`; all existing
+  targets updated to use variables.
+- **Makefile new targets**: `docker-build`, `docker-up`, `docker-down`, `smoke-test`, `deploy`,
+  `docker-build-arm64`, `docker-push`, `docker-save`, `bundle`.
+- **CI `env:` block**: `COVERAGE_FAIL_UNDER`, `TRICORDER_PORT`, health-check timing constants
+  shared across all jobs; `--cov-fail-under` now references `${{ env.COVERAGE_FAIL_UNDER }}`.
+- **E2E fixture teardown**: `full_setup` fixture wraps model registration in `try/finally` so
+  `ModelRegistry._instances` is always restored even if setup fails mid-way.
+- **E2E fixture registry call**: switched from direct `ModelRegistry._instances[...] = model`
+  mutation to `ModelRegistry.create(...)` API; uses `asyncio.run()` instead of manual loop.
+- **.gitignore** extended: `.env.local`, `.env.*.local`, `*.tar` (Docker image tarballs),
+  `tricorder-deploy/` (offline bundle directories).
+
+---
+
+## [2026-04-06]
 
 ### Fixed
 
@@ -62,7 +124,7 @@ All notable changes to this project are documented in this file.
 - Bootstrap tests in `test_server_coverage.py` covering default tool registration and simulated
   sensor readings (`TestDefaultToolBootstrap`).
 
-## [Unreleased] - 2026-04-05
+## [2026-04-05]
 
 ### Added
 
