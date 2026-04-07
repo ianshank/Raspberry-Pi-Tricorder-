@@ -177,3 +177,83 @@ graph LR
 ## Roadmap Reference
 
 Operational roadmap items are maintained in `README.md` under the **Next Steps** section.
+
+---
+
+## C5 - Deployment View
+
+Last updated: 2026-04-07
+
+### Build and Publish Pipeline
+
+```mermaid
+graph TD
+    Dev["Developer Machine\n(Windows / Linux / macOS)"]
+    GHCR["GitHub Container Registry\nghcr.io/owner/tricorder-neural"]
+    GHA["GitHub Actions CI\nlint → typecheck → test → docker → publish"]
+
+    subgraph BuildModes["Build Paths"]
+        LocalBuild["make docker-build-arm64\n(buildx linux/arm64 --load)"]
+        CIPush["CI: docker/build-push-action\n(arm64 + amd64, cache=gha)\nTriggered on main / v* tags"]
+        Bundle["scripts/bundle-to-drive.ps1\n(buildx → docker save → SHA256SUMS\n→ copy artifacts to F:\\tricorder-deploy)"]
+    end
+
+    Dev --> LocalBuild
+    Dev --> Bundle
+    GHA --> CIPush
+    CIPush --> GHCR
+    LocalBuild --> Bundle
+```
+
+### Deployment Paths
+
+```mermaid
+graph LR
+    subgraph Source["Artifact Sources"]
+        GHCR2["GHCR\nghcr.io image"]
+        USB["Offline Bundle\nSD card / USB\ntricorder-deploy/"]
+    end
+
+    subgraph Pi["Raspberry Pi 5"]
+        Docker["Docker runtime\n/opt/tricorder"]
+        Service["tricorder-mcp\nSystemd service\n(venv deploy)\nor docker compose"]
+    end
+
+    subgraph FirstBoot["First-Boot Prep\n(scripts/firstboot/)"]
+        SSH["ssh flag"]
+        WiFi["wpa_supplicant.conf"]
+        Hostname["hostname.txt"]
+    end
+
+    GHCR2 -->|"ssh pi@host\ndocker pull\ndocker compose up"| Docker
+    USB -->|"scripts/pi-load-image.sh\ndocker load\ndocker compose up"| Docker
+    FirstBoot -->|"boot partition\nRPi OS imager"| Pi
+    Docker --> Service
+```
+
+### Deployment Component Map
+
+| Script | Purpose | Invocation |
+|---|---|---|
+| `scripts/deploy.defaults.sh` | Single env-var source for all scripts | `source` by all scripts + CI |
+| `scripts/lib/health-check.sh` | `wait_for_health <url>` polling helper | Make / CI / pi-deploy / pi-load-image |
+| `scripts/pi-deploy.sh` | SSH rsync + service restart on running Pi | `make deploy PI_HOST=<ip>` |
+| `scripts/pi-install.sh` | Bootstrap: apt, venv, systemd unit | Run on Pi by pi-deploy |
+| `scripts/pi-configure.sh` | Hostname, WiFi, locale, hardware interfaces | `bash scripts/pi-configure.sh <host>` |
+| `scripts/bundle-to-drive.ps1` | Windows: arm64 image → F:\ offline bundle | `.\scripts\bundle-to-drive.ps1 -TargetDrive F` |
+| `scripts/pi-load-image.sh` | Pi: docker load + compose up from bundle | `sudo bash pi-load-image.sh /mnt/usb/tricorder-deploy` |
+| `scripts/firstboot/firstboot-setup.sh` | SD card first-boot: SSH + WiFi + hostname | `bash firstboot-setup.sh F:` |
+
+### CI Pipeline
+
+```mermaid
+graph LR
+    Push["git push\nmain / PR"] --> Lint["lint\n(ruff)"]
+    Push --> HW["hardware\n(self-hosted rpi5)\ncontinue-on-error"]
+    Lint --> TypeCheck["typecheck\n(mypy)"]
+    TypeCheck --> Test["test matrix\nPy 3.11 + 3.12\n85% coverage gate"]
+    Lint --> DockerCI["docker\nbuild + smoke test\n(health-check.sh)"]
+    Test --> Publish["publish\n(main/tags only)\nbuildx arm64+amd64\n→ GHCR"]
+    DockerCI --> Publish
+```
+

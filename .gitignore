@@ -34,6 +34,8 @@ bandit-report.txt
 
 # IDE
 .vscode/
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
@@ -56,6 +58,13 @@ models/hailo/*.hef
 # Config overrides
 config/local.yaml
 .env
+.env.local
+.env.*.local
+
+# Docker build artifacts
+*.tar
+tricorder-deploy/
+
 
 # Hardware-specific
 *.hef

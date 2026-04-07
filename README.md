@@ -79,11 +79,12 @@ src/
   mcp_server/    # FastAPI MCP tool server (ToolRegistry, WS streams, auth, 404 handler)
   utils/         # Configuration (Pydantic) and structured logging
 tests/
-  unit/          # Unit tests (mocked hardware, all 452 pass)
+  unit/          # Unit tests (mocked hardware, all 637 pass)
   integration/   # Component integration tests
   e2e/           # End-to-end pipeline tests
   regression/    # Backwards compatibility tests
-  sanity/        # Smoke tests and import validation
+  sanity/        # Import validation
+  smoke/         # Container smoke tests (requires running server)
 config/
   base.yaml      # Default configuration
 docs/
@@ -153,30 +154,79 @@ All tests use mocked I/O adapters — no hardware required. The simulated sensor
 |---|---|---|
 | Lint | `ruff check src tests` | ✅ Clean |
 | Types | `mypy --config-file mypy.ini src tests` | ✅ Clean |
-| Tests | `pytest --cov-fail-under=85` | ✅ 452 passed, 94.30% coverage |
+| Tests | `pytest --cov-fail-under=85` | ✅ 637 passed, 94.86% coverage |
 | Security | `bandit -r src/ -ll` | ✅ 0 High, 0 Medium |
+
+## Docker Deployment
+
+### Quick Docker run (local)
+
+```bash
+docker compose up -d
+curl http://localhost:8000/health
+```
+
+### Build arm64 image for Raspberry Pi
+
+```bash
+make docker-build-arm64              # buildx linux/arm64, locally loaded
+make docker-push TRICORDER_REGISTRY_OWNER=your-github-username   # push to GHCR
+```
+
+### Create offline bundle (Windows → SD card / USB)
+
+```powershell
+# Insert SD card / USB at F:
+.\scripts\bundle-to-drive.ps1 -TargetDrive F
+# Eject and insert into Pi
+```
+
+### First-boot Pi setup (before ejecting SD)
+
+```bash
+# Set SSH enabled, hostname, and WiFi credentials on the boot partition
+PI_HOSTNAME=tricorder PI_WIFI_SSID=MyNet PI_WIFI_PASSWORD=secret \
+  bash scripts/firstboot/firstboot-setup.sh F:
+```
+
+### Deploy from offline bundle on Pi
+
+```bash
+sudo mount /dev/sda1 /mnt/usb
+sudo bash /mnt/usb/tricorder-deploy/scripts/pi-load-image.sh /mnt/usb/tricorder-deploy
+```
+
+### Deploy to running Pi over SSH
+
+```bash
+make deploy PI_HOST=tricorder.local
+```
+
+See [`docs/architecture/c4-architecture.md`](docs/architecture/c4-architecture.md) §C5 for the full deployment architecture and script reference.
 
 ## Next Steps
 
 ### Near-Term (highest priority)
 
-1. **Persistent anomaly acknowledgment state**: move ACK tracking from in-memory dict to SQLite
-   so state survives service restarts and multiple operator sessions.
-2. **Agent LLM integration**: connect `TricorderAgent` to a real Ollama / Hailo-backed LLM
+1. **Agent LLM integration**: connect `TricorderAgent` to a real Ollama / Hailo-backed LLM
    endpoint so `synthesize_report_node` generates contextual text rather than template output.
+2. **UI anomaly history panel**: surface acknowledged anomaly history with filtering and export
+   for operator audit and post-incident review.
 3. **Operator identity propagation**: pass authenticated operator identity through anomaly
    acknowledgment records for a full operator audit trail.
 
 ### Medium-Term
 
-4. **UI anomaly history panel**: surface acknowledged anomaly history with filtering and export
-   for operator audit and post-incident review.
-5. **Hardware CI runner**: add a Raspberry Pi self-hosted GitHub Actions runner so the full
-   sensor driver suite is exercised in CI against real hardware.
-6. **Hailo-10H model deployment runbook**: document the HEF compilation, runtime setup, and
-   model hot-swap workflow for production Hailo NPU integration.
-7. **Persistent chat context**: extend agent sessionStorage persistence to server-side session
+4. **Hardware CI runner**: add a Raspberry Pi self-hosted GitHub Actions runner so the full
+   sensor driver suite is exercised in CI against real hardware. See
+   [`docs/runbooks/hardware-ci-runner.md`](docs/runbooks/hardware-ci-runner.md).
+5. **Hailo-10H model deployment runbook**: document the HEF compilation, runtime setup, and
+   model hot-swap workflow for production Hailo NPU integration. See
+   [`docs/runbooks/hailo-deployment.md`](docs/runbooks/hailo-deployment.md).
+6. **Persistent chat context**: extend agent sessionStorage persistence to server-side session
    storage so multi-device operator contexts can be shared.
+7. **Multi-platform registry tagging**: automate semantic-version tagging on release so GHCR
+   images are promoted from `sha-*` to `v1.x.y` automatically in the `publish` CI job.
 
 ### Long-Term
 
