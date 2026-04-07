@@ -5,8 +5,7 @@ from typing import Any, Dict
 import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    BaseSensor, SensorReading, SensorFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,79 +43,67 @@ class MLX90640Sensor(BaseSensor):
         self.temp_scale_factor = config.get("temp_scale_factor", self.DEFAULT_TEMP_SCALE_FACTOR)
         self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
-    def initialize(self) -> bool:
-        try:
-            # Read device ID (lower byte check)
-            id_bytes = self.adapter.read_i2c_block_data(
-                self.address, self.registers["device_id_reg"] & 0xFF, 2
+    def _do_initialize(self) -> bool:
+        # Read device ID (lower byte check)
+        id_bytes = self.adapter.read_i2c_block_data(
+            self.address, self.registers["device_id_reg"] & 0xFF, 2
+        )
+        device_id = (id_bytes[0] << 8) | id_bytes[1]
+        logger.debug("%s device ID: 0x%04X", self.sensor_id, device_id)
+
+        # Set refresh rate via control register
+        self.adapter.write_i2c_block_data(
+            self.address,
+            self.registers["control_reg"] & 0xFF,
+            self.refresh_rate_cmd,
+        )
+        logger.info("%s initialized successfully", self.sensor_id)
+        return True
+
+    def _do_read(self) -> SensorReading:
+        pixel_count = self.frame_rows * self.frame_cols
+
+        # Read raw frame data in chunks (I2C block read size configurable)
+        raw_bytes = []
+        chunk_size = self.i2c_chunk_size
+        for offset in range(0, pixel_count * 2, chunk_size):
+            reg = (self.registers["status_reg"] + offset) & 0xFF
+            length = min(chunk_size, pixel_count * 2 - offset)
+            chunk = self.adapter.read_i2c_block_data(
+                self.address, reg, length
             )
-            device_id = (id_bytes[0] << 8) | id_bytes[1]
-            logger.debug("%s device ID: 0x%04X", self.sensor_id, device_id)
+            raw_bytes.extend(chunk)
 
-            # Set refresh rate via control register
-            self.adapter.write_i2c_block_data(
-                self.address,
-                self.registers["control_reg"] & 0xFF,
-                self.refresh_rate_cmd,
-            )
-            self.status = SensorStatus.READY
-            logger.info("%s initialized successfully", self.sensor_id)
-            return True
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"MLX90640 init failed: {e}") from e
+        # Convert raw bytes to temperature values (simplified)
+        pixels = []
+        for i in range(0, min(len(raw_bytes), pixel_count * 2), 2):
+            raw = (raw_bytes[i] << 8) | raw_bytes[i + 1]
+            if raw > 32767:
+                raw -= 65536
+            temp_c = raw * self.temp_scale_factor
+            pixels.append(round(temp_c, 2))
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
-            pixel_count = self.frame_rows * self.frame_cols
+        # Pad if we got fewer pixels than expected
+        while len(pixels) < pixel_count:
+            pixels.append(0.0)
 
-            # Read raw frame data in chunks (I2C block read size configurable)
-            raw_bytes = []
-            chunk_size = self.i2c_chunk_size
-            for offset in range(0, pixel_count * 2, chunk_size):
-                reg = (self.registers["status_reg"] + offset) & 0xFF
-                length = min(chunk_size, pixel_count * 2 - offset)
-                chunk = self.adapter.read_i2c_block_data(
-                    self.address, reg, length
-                )
-                raw_bytes.extend(chunk)
-
-            # Convert raw bytes to temperature values (simplified)
-            pixels = []
-            for i in range(0, min(len(raw_bytes), pixel_count * 2), 2):
-                raw = (raw_bytes[i] << 8) | raw_bytes[i + 1]
-                if raw > 32767:
-                    raw -= 65536
-                temp_c = raw * self.temp_scale_factor
-                pixels.append(round(temp_c, 2))
-
-            # Pad if we got fewer pixels than expected
-            while len(pixels) < pixel_count:
-                pixels.append(0.0)
-
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value={
-                    "thermal_frame": pixels[:pixel_count],
-                    "rows": self.frame_rows,
-                    "cols": self.frame_cols,
-                    "min_temp_c": min(pixels[:pixel_count]),
-                    "max_temp_c": max(pixels[:pixel_count]),
-                    "avg_temp_c": round(
-                        sum(pixels[:pixel_count]) / pixel_count, 2
-                    ),
-                },
-                unit="celsius",
-                confidence=self.confidence,
-                metadata={"i2c_address": f"0x{self.address:02X}"},
-            )
-            self._record_reading(reading)
-            return reading
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"MLX90640 read failed: {e}") from e
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value={
+                "thermal_frame": pixels[:pixel_count],
+                "rows": self.frame_rows,
+                "cols": self.frame_cols,
+                "min_temp_c": min(pixels[:pixel_count]),
+                "max_temp_c": max(pixels[:pixel_count]),
+                "avg_temp_c": round(
+                    sum(pixels[:pixel_count]) / pixel_count, 2
+                ),
+            },
+            unit="celsius",
+            confidence=self.confidence,
+            metadata={"i2c_address": f"0x{self.address:02X}"},
+        )
 
 
 SensorFactory.register("mlx90640", MLX90640Sensor)

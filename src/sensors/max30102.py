@@ -5,8 +5,8 @@ from typing import Any, Dict
 import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    BaseSensor, SensorReading,
+    SensorInitializationError, SensorFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,113 +87,97 @@ class MAX30102Sensor(BaseSensor):
         self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
         self.hr_bounds = self._normalize_hr_bounds(config.get("hr_bounds"))
 
-    def initialize(self) -> bool:
-        try:
-            part_id = self.adapter.read_byte_data(
-                self.address, self.registers["part_id_reg"]
-            )
-            if part_id != self.expected_part_id:
-                raise SensorInitializationError(
-                    f"MAX30102 part ID mismatch: expected 0x{self.expected_part_id:02X}, "
-                    f"got 0x{part_id:02X}"
-                )
-
-            # Reset device
-            self.adapter.write_byte_data(
-                self.address, self.registers["mode_config"],
-                self.device_config["reset_value"],
-            )
-            # SpO2 mode (red + IR)
-            self.adapter.write_byte_data(
-                self.address, self.registers["mode_config"],
-                self.device_config["spo2_mode"],
-            )
-            # SpO2 config: ADC range, sample rate, resolution
-            self.adapter.write_byte_data(
-                self.address, self.registers["spo2_config"],
-                self.device_config["spo2_config"],
-            )
-            # LED amplitudes
-            self.adapter.write_byte_data(
-                self.address, self.registers["led1_pulse_amp"], self.led_amplitude
-            )
-            self.adapter.write_byte_data(
-                self.address, self.registers["led2_pulse_amp"], self.led_amplitude
-            )
-            # FIFO config: sample averaging
-            self.adapter.write_byte_data(
-                self.address, self.registers["fifo_config"],
-                self.device_config["fifo_sample_avg"],
+    def _do_initialize(self) -> bool:
+        part_id = self.adapter.read_byte_data(
+            self.address, self.registers["part_id_reg"]
+        )
+        if part_id != self.expected_part_id:
+            raise SensorInitializationError(
+                f"MAX30102 part ID mismatch: expected 0x{self.expected_part_id:02X}, "
+                f"got 0x{part_id:02X}"
             )
 
-            self.status = SensorStatus.READY
-            logger.info("%s initialized (part ID: 0x%02X)", self.sensor_id, part_id)
-            return True
-        except SensorInitializationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"MAX30102 init failed: {e}") from e
+        # Reset device
+        self.adapter.write_byte_data(
+            self.address, self.registers["mode_config"],
+            self.device_config["reset_value"],
+        )
+        # SpO2 mode (red + IR)
+        self.adapter.write_byte_data(
+            self.address, self.registers["mode_config"],
+            self.device_config["spo2_mode"],
+        )
+        # SpO2 config: ADC range, sample rate, resolution
+        self.adapter.write_byte_data(
+            self.address, self.registers["spo2_config"],
+            self.device_config["spo2_config"],
+        )
+        # LED amplitudes
+        self.adapter.write_byte_data(
+            self.address, self.registers["led1_pulse_amp"], self.led_amplitude
+        )
+        self.adapter.write_byte_data(
+            self.address, self.registers["led2_pulse_amp"], self.led_amplitude
+        )
+        # FIFO config: sample averaging
+        self.adapter.write_byte_data(
+            self.address, self.registers["fifo_config"],
+            self.device_config["fifo_sample_avg"],
+        )
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
+        logger.info("%s initialized (part ID: 0x%02X)", self.sensor_id, part_id)
+        return True
 
-            # Read FIFO pointers to determine available samples
-            write_ptr = self.adapter.read_byte_data(
-                self.address, self.registers["fifo_write_ptr"]
-            )
-            read_ptr = self.adapter.read_byte_data(
-                self.address, self.registers["fifo_read_ptr"]
-            )
-            num_samples = (write_ptr - read_ptr) & 0x1F
-            if num_samples == 0:
-                num_samples = 1
+    def _do_read(self) -> SensorReading:
+        # Read FIFO pointers to determine available samples
+        write_ptr = self.adapter.read_byte_data(
+            self.address, self.registers["fifo_write_ptr"]
+        )
+        read_ptr = self.adapter.read_byte_data(
+            self.address, self.registers["fifo_read_ptr"]
+        )
+        num_samples = (write_ptr - read_ptr) & 0x1F
+        if num_samples == 0:
+            num_samples = 1
 
-            # Read FIFO data (6 bytes per sample: 3 red + 3 IR)
-            fifo_data = self.adapter.read_i2c_block_data(
-                self.address, self.registers["fifo_data_reg"], min(num_samples * 6, 32)
-            )
+        # Read FIFO data (6 bytes per sample: 3 red + 3 IR)
+        fifo_data = self.adapter.read_i2c_block_data(
+            self.address, self.registers["fifo_data_reg"], min(num_samples * 6, 32)
+        )
 
-            red_values = []
-            ir_values = []
-            for i in range(0, len(fifo_data) - 5, 6):
-                red = ((fifo_data[i] & 0x03) << 16) | (fifo_data[i + 1] << 8) | fifo_data[i + 2]
-                ir = ((fifo_data[i + 3] & 0x03) << 16) | (fifo_data[i + 4] << 8) | fifo_data[i + 5]
-                red_values.append(red)
-                ir_values.append(ir)
+        red_values = []
+        ir_values = []
+        for i in range(0, len(fifo_data) - 5, 6):
+            red = ((fifo_data[i] & 0x03) << 16) | (fifo_data[i + 1] << 8) | fifo_data[i + 2]
+            ir = ((fifo_data[i + 3] & 0x03) << 16) | (fifo_data[i + 4] << 8) | fifo_data[i + 5]
+            red_values.append(red)
+            ir_values.append(ir)
 
-            # Simplified SpO2 / HR estimation
-            avg_red = sum(red_values) / max(len(red_values), 1)
-            avg_ir = sum(ir_values) / max(len(ir_values), 1)
-            ratio = avg_red / max(avg_ir, 1)
-            spo2_cal = self.spo2_calibration
-            spo2_estimate = max(0, min(100, spo2_cal["intercept"] - spo2_cal["slope"] * ratio))
-            hr_estimate = max(
-                self.hr_bounds["min_bpm"],
-                min(self.hr_bounds["max_bpm"], len(red_values) * 60 / max(num_samples, 1)),
-            )
+        # Simplified SpO2 / HR estimation
+        avg_red = sum(red_values) / max(len(red_values), 1)
+        avg_ir = sum(ir_values) / max(len(ir_values), 1)
+        ratio = avg_red / max(avg_ir, 1)
+        spo2_cal = self.spo2_calibration
+        spo2_estimate = max(0, min(100, spo2_cal["intercept"] - spo2_cal["slope"] * ratio))
+        hr_estimate = max(
+            self.hr_bounds["min_bpm"],
+            min(self.hr_bounds["max_bpm"], len(red_values) * 60 / max(num_samples, 1)),
+        )
 
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value={
-                    "spo2_percent": round(spo2_estimate, 1),
-                    "heart_rate_bpm": round(hr_estimate, 1),
-                    "red_avg": round(avg_red, 1),
-                    "ir_avg": round(avg_ir, 1),
-                    "samples_read": len(red_values),
-                },
-                unit="composite",
-                confidence=self.confidence,
-                metadata={"i2c_address": f"0x{self.address:02X}"},
-            )
-            self._record_reading(reading)
-            return reading
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"MAX30102 read failed: {e}") from e
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value={
+                "spo2_percent": round(spo2_estimate, 1),
+                "heart_rate_bpm": round(hr_estimate, 1),
+                "red_avg": round(avg_red, 1),
+                "ir_avg": round(avg_ir, 1),
+                "samples_read": len(red_values),
+            },
+            unit="composite",
+            confidence=self.confidence,
+            metadata={"i2c_address": f"0x{self.address:02X}"},
+        )
 
 
 SensorFactory.register("max30102", MAX30102Sensor)

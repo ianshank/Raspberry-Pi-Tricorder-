@@ -6,7 +6,7 @@ import logging
 
 from sensors.base import (
     BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    SensorInitializationError, SensorFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,83 +63,67 @@ class BME680Sensor(BaseSensor):
         self.calibration = config.get("calibration", self.DEFAULT_CALIBRATION)
         self.confidence = config.get("confidence", self.DEFAULT_CONFIDENCE)
 
-    def initialize(self) -> bool:
-        try:
-            chip_id = self.adapter.read_byte_data(
-                self.address, self.registers["chip_id_reg"]
+    def _do_initialize(self) -> bool:
+        chip_id = self.adapter.read_byte_data(
+            self.address, self.registers["chip_id_reg"]
+        )
+        if chip_id != self.expected_chip_id:
+            raise SensorInitializationError(
+                f"BME680 chip ID mismatch: expected 0x{self.expected_chip_id:02X}, "
+                f"got 0x{chip_id:02X}"
             )
-            if chip_id != self.expected_chip_id:
-                raise SensorInitializationError(
-                    f"BME680 chip ID mismatch: expected 0x{self.expected_chip_id:02X}, "
-                    f"got 0x{chip_id:02X}"
-                )
-            # Configure humidity oversampling
-            self.adapter.write_byte_data(
-                self.address, self.registers["ctrl_hum"],
-                self.oversampling["humidity"],
-            )
-            # Configure temp/pressure oversampling
-            self.adapter.write_byte_data(
-                self.address, self.registers["ctrl_meas"],
-                self.oversampling["temp_pressure"],
-            )
-            self.status = SensorStatus.READY
-            logger.info("%s initialized successfully", self.sensor_id)
-            return True
-        except SensorInitializationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"Failed to initialize BME680: {e}") from e
+        # Configure humidity oversampling
+        self.adapter.write_byte_data(
+            self.address, self.registers["ctrl_hum"],
+            self.oversampling["humidity"],
+        )
+        # Configure temp/pressure oversampling
+        self.adapter.write_byte_data(
+            self.address, self.registers["ctrl_meas"],
+            self.oversampling["temp_pressure"],
+        )
+        logger.info("%s initialized successfully", self.sensor_id)
+        return True
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
+    def _do_read(self) -> SensorReading:
+        raw_temp = self.adapter.read_i2c_block_data(
+            self.address, self.registers["temp_msb"], 3
+        )
+        raw_hum = self.adapter.read_i2c_block_data(
+            self.address, self.registers["hum_msb"], 2
+        )
+        raw_press = self.adapter.read_i2c_block_data(
+            self.address, self.registers["press_msb"], 3
+        )
+        raw_gas = self.adapter.read_i2c_block_data(
+            self.address, self.registers["gas_msb"], 2
+        )
 
-            raw_temp = self.adapter.read_i2c_block_data(
-                self.address, self.registers["temp_msb"], 3
-            )
-            raw_hum = self.adapter.read_i2c_block_data(
-                self.address, self.registers["hum_msb"], 2
-            )
-            raw_press = self.adapter.read_i2c_block_data(
-                self.address, self.registers["press_msb"], 3
-            )
-            raw_gas = self.adapter.read_i2c_block_data(
-                self.address, self.registers["gas_msb"], 2
-            )
+        temp_adc = (raw_temp[0] << 12) | (raw_temp[1] << 4) | (raw_temp[2] >> 4)
+        hum_adc = (raw_hum[0] << 8) | raw_hum[1]
+        press_adc = (raw_press[0] << 12) | (raw_press[1] << 4) | (raw_press[2] >> 4)
+        gas_adc = (raw_gas[0] << 2) | (raw_gas[1] >> 6)
 
-            temp_adc = (raw_temp[0] << 12) | (raw_temp[1] << 4) | (raw_temp[2] >> 4)
-            hum_adc = (raw_hum[0] << 8) | raw_hum[1]
-            press_adc = (raw_press[0] << 12) | (raw_press[1] << 4) | (raw_press[2] >> 4)
-            gas_adc = (raw_gas[0] << 2) | (raw_gas[1] >> 6)
+        # Simplified conversion (real driver would use calibration coefficients)
+        cal = self.calibration
+        temp_c = temp_adc / cal["temp_divisor"] * cal["temp_scale"] + cal["temp_offset"]
+        humidity_rh = hum_adc / cal["hum_divisor"] * cal["hum_scale"]
+        pressure_hpa = press_adc / cal["press_divisor"] * cal["press_scale"] + cal["press_offset"]
+        gas_resistance_ohm = max(1, gas_adc) * cal["gas_multiplier"]
 
-            # Simplified conversion (real driver would use calibration coefficients)
-            cal = self.calibration
-            temp_c = temp_adc / cal["temp_divisor"] * cal["temp_scale"] + cal["temp_offset"]
-            humidity_rh = hum_adc / cal["hum_divisor"] * cal["hum_scale"]
-            pressure_hpa = press_adc / cal["press_divisor"] * cal["press_scale"] + cal["press_offset"]
-            gas_resistance_ohm = max(1, gas_adc) * cal["gas_multiplier"]
-
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value={
-                    "temperature_c": round(temp_c, 2),
-                    "humidity_rh": round(humidity_rh, 2),
-                    "pressure_hpa": round(pressure_hpa, 2),
-                    "gas_resistance_ohm": gas_resistance_ohm,
-                },
-                unit="composite",
-                confidence=self.confidence,
-                metadata={"i2c_address": f"0x{self.address:02X}"},
-            )
-            self._record_reading(reading)
-            return reading
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"BME680 read failed: {e}") from e
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value={
+                "temperature_c": round(temp_c, 2),
+                "humidity_rh": round(humidity_rh, 2),
+                "pressure_hpa": round(pressure_hpa, 2),
+                "gas_resistance_ohm": gas_resistance_ohm,
+            },
+            unit="composite",
+            confidence=self.confidence,
+            metadata={"i2c_address": f"0x{self.address:02X}"},
+        )
 
     def calibrate(self, **kwargs: Any) -> bool:
         self.status = SensorStatus.CALIBRATING

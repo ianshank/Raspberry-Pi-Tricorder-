@@ -135,6 +135,10 @@ class MCPServerConfig(BaseModel):
     auth_enabled: bool = Field(default=False)
     api_key: Optional[str] = None
     max_concurrent_tools: int = Field(default=10, gt=0, le=100)
+    operator_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping of API key/token to operator_id for identity derivation",
+    )
 
     @field_validator('transport')
     @classmethod
@@ -160,6 +164,12 @@ class LangGraphAgentConfig(BaseModel):
     )
     max_tools_per_iteration: int = Field(default=3, gt=0, le=20)
     max_iterations: int = Field(default=5, gt=0, le=50)
+    llm_timeout_s: float = Field(
+        default=30.0,
+        gt=0,
+        le=300,
+        description="HTTP timeout for LLM calls in seconds",
+    )
 
     @field_validator('mission_mode')
     @classmethod
@@ -312,13 +322,29 @@ class UIConfig(BaseModel):
         default=500,
         ge=1,
         le=10000,
-        description="Maximum number of acknowledged anomaly records kept in memory",
+        description="Maximum number of acknowledged anomaly records kept",
+    )
+    anomaly_ack_db_path: str = Field(
+        default="data/anomaly_ack.db",
+        description="SQLite path for persistent ACK storage. "
+                    "Empty string disables persistence (in-memory fallback).",
     )
     anomaly_alert_threshold: float = Field(
         default=0.75,
         ge=0.0,
         le=1.0,
         description="Fallback anomaly threshold when model output omits anomaly flag",
+    )
+    anomaly_history_path: str = Field(
+        default="/ui/anomalies/history",
+        min_length=1,
+        description="REST endpoint path for paginated ACK history",
+    )
+    anomaly_history_page_size: int = Field(
+        default=50,
+        ge=10,
+        le=500,
+        description="Default page size for anomaly history pagination",
     )
     agent_enabled: bool = Field(default=True, description="Enable backend agent chat endpoint")
     agent_chat_path: str = Field(
@@ -348,7 +374,7 @@ class UIConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "anomaly_ack_path")
+    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "anomaly_ack_path", "anomaly_history_path")
     @classmethod
     def validate_path(cls, v: str) -> str:
         if not v.startswith("/"):
@@ -385,6 +411,10 @@ class FeatureFlagsConfig(BaseModel):
     anomaly_ack: bool = Field(default=True, description="Enable anomaly acknowledgment endpoint")
     agent_chat: bool = Field(default=True, description="Enable agent chat endpoint")
     mqtt_publishing: bool = Field(default=True, description="Enable MQTT event publishing")
+    llm_enabled: bool = Field(
+        default=False,
+        description="Enable LLM-based report synthesis (requires Ollama or compatible endpoint)",
+    )
 
 
 class TricorderConfig(BaseModel):

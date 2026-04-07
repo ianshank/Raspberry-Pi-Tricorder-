@@ -111,6 +111,7 @@ mcp_server:
   transport: "http"
   auth_enabled: false
   max_concurrent_tools: 10
+  operator_map: {}
 
 agent:
   llm_endpoint: "http://localhost:11434"
@@ -120,6 +121,7 @@ agent:
   checkpoint_db_path: "data/agent_checkpoints.db"
   mission_mode: "patrol"
   human_in_loop_threshold: "HIGH"
+  llm_timeout_s: 30.0
 
 rag:
   db_path: "data/hazard_vectordb"
@@ -148,14 +150,17 @@ ui:
   anomaly_ack_enabled: true
   anomaly_ack_path: "/ui/anomalies/ack"
   anomaly_ack_history_limit: 500
+  anomaly_ack_db_path: "data/anomaly_ack.db"
   anomaly_alert_threshold: 0.75
+  anomaly_history_path: "/ui/anomalies/history"
+  anomaly_history_page_size: 50
   agent_enabled: true
   agent_chat_path: "/ui/agent/chat"
   reconnect_initial_ms: 1500
   reconnect_max_ms: 10000
   theme: "classic"
   debug: false
-  panel_order: ["bio", "env", "eng", "agent"]
+  panel_order: ["bio", "env", "eng", "agent", "history"]
   panels:
     bio:
       label: "BIO / MEDICAL"
@@ -173,6 +178,10 @@ ui:
       label: "LIBRARY COMPUTER"
       sensors: []
       color: "white"
+    history:
+      label: "ANOMALY HISTORY"
+      sensors: []
+      color: "chestnut-rose"
 
 logging:
   level: "INFO"
@@ -186,3 +195,4 @@ feature_flags:
   anomaly_ack: true
   agent_chat: true
   mqtt_publishing: true
+  llm_enabled: false

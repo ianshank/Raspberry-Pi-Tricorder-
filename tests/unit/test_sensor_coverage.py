@@ -62,7 +62,7 @@ class TestADS1263Coverage:
         sensor = ADS1263Sensor("ads_01", mock_spi_adapter, ads1263_config)
         sensor.initialize()
         mock_spi_adapter.xfer2.side_effect = RuntimeError("SPI bus error")
-        with pytest.raises(SensorCommunicationError, match="ADS1263 read failed"):
+        with pytest.raises(SensorCommunicationError, match="read failed"):
             sensor.read()
 
     def test_reset_success(self, mock_spi_adapter, ads1263_config):
@@ -124,7 +124,7 @@ class TestMAX30102Coverage:
         """Lines 135-137: non-SensorInitializationError wrapped."""
         mock_i2c_max30102.read_byte_data = Mock(side_effect=OSError("I2C bus error"))
         sensor = MAX30102Sensor("max_01", mock_i2c_max30102, max30102_config)
-        with pytest.raises(SensorInitializationError, match="MAX30102 init failed"):
+        with pytest.raises(SensorInitializationError, match="Failed to initialize"):
             sensor.initialize()
 
     def test_read_zero_fifo_forces_one_sample(self, mock_i2c_max30102, max30102_config):
@@ -193,7 +193,7 @@ class TestAS7265xCoverage:
         """Line 99-101: OSError during init → wraps to SensorInitializationError."""
         mock_i2c_as7265x.read_byte_data = Mock(side_effect=OSError("I2C dead"))
         sensor = AS7265xSensor("as_01", mock_i2c_as7265x, as7265x_config)
-        with pytest.raises(SensorInitializationError, match="AS7265x init failed"):
+        with pytest.raises(SensorInitializationError, match="Failed to initialize"):
             sensor.initialize()
 
 
@@ -225,7 +225,7 @@ class TestHLKLD2410Coverage:
         sensor = HLKLD2410Sensor("ld_01", mock_uart_adapter, hlk_ld2410_config)
         sensor.initialize()
         mock_uart_adapter.read = Mock(side_effect=OSError("UART crash"))
-        with pytest.raises(SensorCommunicationError, match="LD2410 read failed"):
+        with pytest.raises(SensorCommunicationError, match="read failed"):
             sensor.read()
 
 
@@ -256,7 +256,7 @@ class TestTFMiniSCoverage:
         """Lines 93-95: write() raises → SensorInitializationError."""
         mock_uart_tfmini.write = Mock(side_effect=OSError("UART error"))
         sensor = TFMiniSSensor("tf_01", mock_uart_tfmini, tfmini_config)
-        with pytest.raises(SensorInitializationError, match="TFmini-S init failed"):
+        with pytest.raises(SensorInitializationError, match="Failed to initialize"):
             sensor.initialize()
 
     def test_read_generic_exception_raises_communication_error(self, mock_uart_tfmini, tfmini_config):
@@ -264,7 +264,7 @@ class TestTFMiniSCoverage:
         sensor = TFMiniSSensor("tf_01", mock_uart_tfmini, tfmini_config)
         sensor.initialize()
         mock_uart_tfmini.read = Mock(side_effect=OSError("UART dead"))
-        with pytest.raises(SensorCommunicationError, match="TFmini-S read failed"):
+        with pytest.raises(SensorCommunicationError, match="read failed"):
             sensor.read()
 
 

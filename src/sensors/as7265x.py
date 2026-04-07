@@ -5,8 +5,8 @@ from typing import Any, Dict, List
 import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    BaseSensor, SensorReading,
+    SensorInitializationError, SensorFactory,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,73 +71,57 @@ class AS7265xSensor(BaseSensor):
             self.address, self.registers["read_reg"]
         )
 
-    def initialize(self) -> bool:
-        try:
-            hw_version = self._virtual_read(self.registers["hw_version"])
-            if (hw_version & 0xF0) != (self.expected_hw_version & 0xF0):
-                raise SensorInitializationError(
-                    f"AS7265x HW version mismatch: expected 0x{self.expected_hw_version:02X}, "
-                    f"got 0x{hw_version:02X}"
-                )
-
-            # Set integration time
-            self.adapter.write_byte_data(
-                self.address, self.registers["write_reg"],
-                self.registers["integration_time"]
-            )
-            self.adapter.write_byte_data(
-                self.address, self.registers["write_reg"],
-                self.integration_time,
+    def _do_initialize(self) -> bool:
+        hw_version = self._virtual_read(self.registers["hw_version"])
+        if (hw_version & 0xF0) != (self.expected_hw_version & 0xF0):
+            raise SensorInitializationError(
+                f"AS7265x HW version mismatch: expected 0x{self.expected_hw_version:02X}, "
+                f"got 0x{hw_version:02X}"
             )
 
-            self.status = SensorStatus.READY
-            logger.info("%s initialized (HW: 0x%02X)", self.sensor_id, hw_version)
-            return True
-        except SensorInitializationError as e:
-            self._record_error(e)
-            raise
-        except Exception as e:
-            self._record_error(e)
-            raise SensorInitializationError(f"AS7265x init failed: {e}") from e
+        # Set integration time
+        self.adapter.write_byte_data(
+            self.address, self.registers["write_reg"],
+            self.registers["integration_time"]
+        )
+        self.adapter.write_byte_data(
+            self.address, self.registers["write_reg"],
+            self.integration_time,
+        )
 
-    def read(self) -> SensorReading:
-        try:
-            self.status = SensorStatus.READING
+        logger.info("%s initialized (HW: 0x%02X)", self.sensor_id, hw_version)
+        return True
 
-            # Read calibrated channel data (6 bytes per device x 3 devices = 18 channels)
-            channels: List[float] = []
-            for i in range(self.channel_count):
-                # Each channel is 2 bytes (MSB, LSB) from calibrated data registers
-                raw_data = self.adapter.read_i2c_block_data(
-                    self.address, self.registers["calibrated_data_base"] + i * 2, 2
-                )
-                raw_value = (raw_data[0] << 8) | raw_data[1]
-                # Convert to calibrated float (simplified)
-                calibrated = raw_value / 65535.0 * 100.0
-                channels.append(round(calibrated, 4))
-
-            # Build wavelength-mapped result
-            spectral_data = {}
-            for i, wavelength in enumerate(self.wavelengths[:len(channels)]):
-                spectral_data[f"{wavelength}nm"] = channels[i]
-
-            reading = SensorReading(
-                sensor_id=self.sensor_id,
-                timestamp=datetime.now(timezone.utc),
-                value={
-                    "spectral_channels": spectral_data,
-                    "channel_count": len(channels),
-                    "raw_values": channels,
-                },
-                unit="relative_intensity",
-                confidence=self.confidence,
-                metadata={"i2c_address": f"0x{self.address:02X}"},
+    def _do_read(self) -> SensorReading:
+        # Read calibrated channel data (6 bytes per device x 3 devices = 18 channels)
+        channels: List[float] = []
+        for i in range(self.channel_count):
+            # Each channel is 2 bytes (MSB, LSB) from calibrated data registers
+            raw_data = self.adapter.read_i2c_block_data(
+                self.address, self.registers["calibrated_data_base"] + i * 2, 2
             )
-            self._record_reading(reading)
-            return reading
-        except Exception as e:
-            self._record_error(e)
-            raise SensorCommunicationError(f"AS7265x read failed: {e}") from e
+            raw_value = (raw_data[0] << 8) | raw_data[1]
+            # Convert to calibrated float (simplified)
+            calibrated = raw_value / 65535.0 * 100.0
+            channels.append(round(calibrated, 4))
+
+        # Build wavelength-mapped result
+        spectral_data = {}
+        for i, wavelength in enumerate(self.wavelengths[:len(channels)]):
+            spectral_data[f"{wavelength}nm"] = channels[i]
+
+        return SensorReading(
+            sensor_id=self.sensor_id,
+            timestamp=datetime.now(timezone.utc),
+            value={
+                "spectral_channels": spectral_data,
+                "channel_count": len(channels),
+                "raw_values": channels,
+            },
+            unit="relative_intensity",
+            confidence=self.confidence,
+            metadata={"i2c_address": f"0x{self.address:02X}"},
+        )
 
 
 SensorFactory.register("as7265x", AS7265xSensor)

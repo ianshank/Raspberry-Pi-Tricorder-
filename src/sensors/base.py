@@ -5,7 +5,7 @@ All sensor drivers inherit from BaseSensor and implement the abstract methods.
 Drivers are hardware-agnostic and use injected I/O adapters for testing.
 """
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -99,15 +99,76 @@ class BaseSensor(ABC):
         self._total_reads = 0
         logger.info("Initialized sensor: %s", sensor_id)
 
-    @abstractmethod
     def initialize(self) -> bool:
-        """Initialize hardware and verify communication."""
-        pass
+        """Template method: wraps _do_initialize() with error recording.
 
-    @abstractmethod
+        Subclasses should override ``_do_initialize`` (preferred) or this
+        method directly for backwards compatibility.
+        """
+        try:
+            result = self._do_initialize()
+            self.status = SensorStatus.READY
+            return result
+        except SensorInitializationError as e:
+            self._record_error(e)
+            raise
+        except Exception as e:
+            self._record_error(e)
+            raise SensorInitializationError(
+                f"Failed to initialize {self.sensor_id}: {e}"
+            ) from e
+
     def read(self) -> SensorReading:
-        """Read current sensor value."""
-        pass
+        """Template method: wraps _do_read() with status/recording/error handling.
+
+        Subclasses should override ``_do_read`` (preferred) or this method
+        directly for backwards compatibility.
+        """
+        try:
+            self.status = SensorStatus.READING
+            reading = self._do_read()
+            self._record_reading(reading)
+            return reading
+        except (SensorCommunicationError, SensorCalibrationError) as e:
+            self._record_error(e)
+            raise
+        except Exception as e:
+            self._record_error(e)
+            raise SensorCommunicationError(
+                f"{self.sensor_id} read failed: {e}"
+            ) from e
+
+    def _do_initialize(self) -> bool:
+        """Sensor-specific initialization logic.
+
+        Override this method instead of ``initialize()`` to benefit from
+        automatic error recording and status management.
+
+        Returns:
+            True on success.
+
+        Raises:
+            SensorInitializationError: On initialization failure.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _do_initialize()"
+        )
+
+    def _do_read(self) -> SensorReading:
+        """Sensor-specific read logic.
+
+        Override this method instead of ``read()`` to benefit from automatic
+        status transitions, reading recording, and error handling.
+
+        Returns:
+            A SensorReading with the current sensor data.
+
+        Raises:
+            SensorCommunicationError: On read failure.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement _do_read()"
+        )
 
     def calibrate(self, **kwargs: Any) -> bool:
         """Calibrate sensor (optional)."""

@@ -101,6 +101,11 @@ class AnomalyDetector(BaseModel):
 
             elapsed_ms = (time.monotonic() - start_time) * 1000
             self._record_inference(elapsed_ms)
+            if elapsed_ms > 100:
+                logger.warning(
+                    "%s inference slow: %.1fms (threshold: 100ms)",
+                    self.model_id, elapsed_ms,
+                )
             self.status = ModelStatus.LOADED
 
             # Record to history

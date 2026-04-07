@@ -10,6 +10,8 @@ from enum import Enum
 import logging
 import operator
 
+from utils.constants import DEFAULT_SEVERITY_THRESHOLDS, SEVERITY_LEVELS
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,20 +75,22 @@ class TricorderAgent:
     - synthesize_report: Generates situation report
     """
 
-    DEFAULT_SEVERITY_THRESHOLDS = {
-        "critical": 0.9,
-        "high": 0.75,
-        "medium": 0.5,
-    }
-    SEVERITY_LEVELS = ("critical", "high", "medium")
+    DEFAULT_SEVERITY_THRESHOLDS = DEFAULT_SEVERITY_THRESHOLDS
+    SEVERITY_LEVELS = SEVERITY_LEVELS
     DEFAULT_MAX_TOOLS_PER_ITERATION = 3
     DEFAULT_MAX_ITERATIONS = 5
 
-    def __init__(self, config: Dict[str, Any], tool_caller: Optional[Any] = None):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        tool_caller: Optional[Any] = None,
+        llm_client: Optional[Any] = None,
+    ):
         """
         Args:
             config: LangGraphAgentConfig as dict
             tool_caller: Callable for MCP tool execution (injected)
+            llm_client: Optional LLMClient protocol implementation for report synthesis
         """
         self.config = config
         self.llm_endpoint = config.get("llm_endpoint", "http://localhost:11434")
@@ -107,6 +111,7 @@ class TricorderAgent:
             config.get("max_iterations"), self.DEFAULT_MAX_ITERATIONS
         )
         self.tool_caller = tool_caller
+        self.llm_client = llm_client
         self._graph: Any = None
         logger.info("TricorderAgent created: mode=%s, model=%s",
                      self.mission_mode, self.model_name)
@@ -197,6 +202,7 @@ class TricorderAgent:
 
     def sensor_monitor_node(self, state: AgentState) -> Dict[str, Any]:
         """Entry node: receive and classify anomaly event."""
+        logger.debug("sensor_monitor_node entry")
         event_raw = state.get("anomaly_event", {})
         event = event_raw if isinstance(event_raw, dict) else {}
         anomaly_score = event.get("anomaly_score", 0.0)
@@ -226,6 +232,7 @@ class TricorderAgent:
 
     def evidence_gather_node(self, state: AgentState) -> Dict[str, Any]:
         """Gather additional sensor evidence based on anomaly context."""
+        logger.debug("evidence_gather_node entry")
         event_raw = state.get("anomaly_event", {})
         event = event_raw if isinstance(event_raw, dict) else {}
         affected_sensors = event.get("affected_sensors", [])
@@ -254,6 +261,7 @@ class TricorderAgent:
 
     def plan_tools_node(self, state: AgentState) -> Dict[str, Any]:
         """Plan which tools to execute next."""
+        logger.debug("plan_tools_node entry")
         planned_steps = state.get("planned_steps", [])
         if planned_steps:
             executed_keys = set()
@@ -261,12 +269,17 @@ class TricorderAgent:
                 t = r.get("tool", "")
                 a = r.get("args", {}) if isinstance(r.get("args"), dict) else {}
                 executed_keys.add((t, tuple(sorted((k, str(v)) for k, v in a.items()))))
+            def _step_key(step: Dict[str, Any]) -> tuple:  # type: ignore[type-arg]
+                raw = step.get("args")
+                args: Dict[str, Any] = raw if isinstance(raw, dict) else {}
+                return (
+                    step.get("tool", ""),
+                    tuple(sorted((k, str(v)) for k, v in args.items())),
+                )
+
             remaining_steps = [
                 step for step in planned_steps
-                if (
-                    step.get("tool", ""),
-                    tuple(sorted((k, str(v)) for k, v in step.get("args", {}).items())),
-                ) not in executed_keys
+                if _step_key(step) not in executed_keys
             ]
             return {
                 "planned_tools": [s["tool"] for s in remaining_steps],
@@ -280,6 +293,7 @@ class TricorderAgent:
 
     def execute_tools_node(self, state: AgentState) -> Dict[str, Any]:
         """Execute planned tools via MCP tool caller."""
+        logger.debug("execute_tools_node entry")
         planned_steps = state.get("planned_steps", [])
         planned = state.get("planned_tools", [])
         results = []
@@ -319,15 +333,12 @@ class TricorderAgent:
             return "continue"
         return "synthesize"
 
-    def synthesize_report_node(self, state: AgentState) -> Dict[str, Any]:
-        """Generate final situation report from gathered evidence."""
-        severity = state.get("severity", "LOW")
-        evidence_items = state.get("evidence", [])
-        tool_results = state.get("tool_results", [])
-        logger.debug("Synthesizing report: severity=%s, evidence=%d, tools=%d",
-                     severity, len(evidence_items), len(tool_results))
-
-        # Build report from evidence
+    def _build_template_report(
+        self,
+        severity: str,
+        tool_results: List[Dict[str, Any]],
+    ) -> str:
+        """Build a hardcoded markdown situation report (fallback)."""
         report_lines = [
             "## Tricorder Situation Report",
             f"**Severity:** {severity}",
@@ -350,7 +361,81 @@ class TricorderAgent:
         else:
             report_lines.append("Situation logged. Continuing automated monitoring.")
 
-        report = "\n".join(report_lines)
+        return "\n".join(report_lines)
+
+    def _build_llm_prompt(
+        self,
+        severity: str,
+        evidence: List[Dict[str, Any]],
+        tool_results: List[Dict[str, Any]],
+    ) -> str:
+        """Construct a structured prompt for LLM-based report synthesis."""
+        tool_summary = "\n".join(
+            f"- {r.get('tool', '?')}: {'OK' if r.get('success') else 'FAILED'}"
+            for r in tool_results
+        )
+        return (
+            f"You are the Library Computer on a Tricorder sensor platform.\n"
+            f"Mission mode: {self.mission_mode}\n"
+            f"Severity: {severity}\n"
+            f"Evidence collected: {len(evidence)} items\n"
+            f"Tool results:\n{tool_summary}\n\n"
+            f"Generate a concise situation report in markdown. "
+            f"Include severity assessment, key findings, and recommendations. "
+            f"Keep it under 300 words."
+        )
+
+    def _try_llm_synthesis(
+        self,
+        severity: str,
+        evidence: List[Dict[str, Any]],
+        tool_results: List[Dict[str, Any]],
+    ) -> Optional[str]:
+        """Attempt LLM-based report synthesis. Returns None on any failure."""
+        import asyncio
+        import concurrent.futures
+
+        try:
+            prompt = self._build_llm_prompt(severity, evidence, tool_results)
+            coro = self.llm_client.generate(prompt, self.temperature, self.max_tokens)  # type: ignore[union-attr]
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop and loop.is_running():
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    timeout = float(self.config.get("llm_timeout_s", 30.0))
+                    future = pool.submit(asyncio.run, coro)
+                    result = future.result(timeout=timeout)
+            else:
+                result = asyncio.run(coro)
+
+            if result and result.strip():
+                logger.info("LLM synthesis successful (%d chars)", len(result))
+                return result.strip()
+            logger.warning("LLM returned empty response, falling back to template")
+            return None
+        except Exception as e:
+            logger.warning("LLM synthesis failed, falling back to template: %s", e)
+            return None
+
+    def synthesize_report_node(self, state: AgentState) -> Dict[str, Any]:
+        """Generate final situation report from gathered evidence."""
+        logger.debug("synthesize_report_node entry")
+        severity = str(state.get("severity", "LOW") or "LOW")
+        evidence_items = state.get("evidence", [])
+        tool_results = state.get("tool_results", [])
+        logger.debug("Synthesizing report: severity=%s, evidence=%d, tools=%d",
+                     severity, len(evidence_items), len(tool_results))
+
+        # Try LLM synthesis first, fall back to template
+        report: Optional[str] = None
+        if self.llm_client is not None:
+            report = self._try_llm_synthesis(severity, evidence_items, tool_results)
+        if report is None:
+            report = self._build_template_report(severity, tool_results)
 
         return {
             "report": report,
