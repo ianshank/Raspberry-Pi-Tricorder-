@@ -104,9 +104,11 @@ def create_admin_router(
                 detail="Body must contain 'updates' dict",
             )
 
+        logger.debug("Admin config update: sections=%s", list(updates.keys()))
         try:
             diff = config_manager.reload(updates)
         except ValueError as exc:
+            logger.debug("Admin config validation failed: %s", exc)
             raise HTTPException(status_code=422, detail=str(exc))
         except Exception as exc:
             logger.error("Config reload failed: %s", exc, exc_info=True)
@@ -115,6 +117,8 @@ def create_admin_router(
                 detail="Config reload failed. Check server logs.",
             )
 
+        if diff:
+            logger.info("Config reload applied: sections=%s", list(diff.keys()))
         return {
             "ok": True,
             "changes": diff,

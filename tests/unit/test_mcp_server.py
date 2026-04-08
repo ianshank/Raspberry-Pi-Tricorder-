@@ -61,6 +61,87 @@ class TestHealthEndpoint:
         assert data["tools_registered"] == 2
 
 
+class TestHealthDetailedEndpoint:
+    def test_health_detailed_enabled(self):
+        """Detailed health returns per-sensor and MQTT state."""
+        registry = ToolRegistry()
+        registry.register_function("t", "test", {}, lambda: 1)
+        app = create_app(
+            config={"mcp_server": {"health_detailed_enabled": True}},
+            registry=registry,
+        )
+        client = TestClient(app)
+        resp = client.get("/health/detailed")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "healthy"
+        assert "uptime_s" in data
+        assert "sensors" in data
+        assert "mqtt" in data
+        assert data["mqtt"]["connected"] is False
+
+    def test_health_detailed_disabled(self):
+        """When health_detailed_enabled=False, returns 404."""
+        registry = ToolRegistry()
+        app = create_app(
+            config={"mcp_server": {"health_detailed_enabled": False}},
+            registry=registry,
+        )
+        client = TestClient(app)
+        resp = client.get("/health/detailed")
+        assert resp.status_code == 404
+
+
+class TestAdminConfigIntegration:
+    def test_admin_not_enabled_by_default(self, test_client):
+        """Admin API is not mounted when admin.enabled=False (default)."""
+        resp = test_client.get("/admin/config")
+        assert resp.status_code == 404
+
+    def test_admin_enabled_with_secret(self):
+        """When admin.enabled=True with hmac_secret, endpoints are mounted."""
+        import hashlib
+        import hmac as hmac_mod
+        import json
+
+        registry = ToolRegistry()
+        secret = "test-secret"
+        app = create_app(
+            config={
+                "admin": {"enabled": True, "hmac_secret": secret},
+            },
+            registry=registry,
+        )
+        client = TestClient(app)
+
+        # GET should work without HMAC
+        resp = client.get("/admin/config")
+        assert resp.status_code == 200
+        assert "version" in resp.json()
+
+        # PUT with valid HMAC should work
+        body = json.dumps({"updates": {"logging": {"level": "DEBUG"}}}).encode()
+        sig = hmac_mod.new(secret.encode(), body, hashlib.sha256).hexdigest()
+        resp = client.put(
+            "/admin/config",
+            content=body,
+            headers={"X-Tricorder-HMAC": sig},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_admin_enabled_without_secret_not_mounted(self):
+        """Admin enabled but no hmac_secret → admin API NOT mounted."""
+        registry = ToolRegistry()
+        app = create_app(
+            config={"admin": {"enabled": True}},
+            registry=registry,
+        )
+        client = TestClient(app)
+        resp = client.get("/admin/config")
+        assert resp.status_code == 404
+
+
 class TestToolsEndpoint:
     def test_list_tools(self, test_client):
         resp = test_client.get("/tools")

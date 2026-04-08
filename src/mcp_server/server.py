@@ -4,7 +4,7 @@ Exposes sensor tools via FastAPI with dynamic tool registry.
 All configuration loaded from TricorderConfig — no hardcoded values.
 """
 
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import asyncio
@@ -40,9 +40,13 @@ from sensors.base import BaseSensor, SensorReading, SensorStatus
 from sensors.manager import SensorManager
 from utils.constants import (
     AGENT_CHAT_QUERY_MAX_LENGTH,
-    MQTT_TOPIC_SENSORS,
-    MQTT_TOPIC_ANOMALIES,
+    MAX_ANOMALY_HISTORY_PAGE_SIZE,
+    MIN_ACK_HISTORY_LIMIT,
+    MIN_ANOMALY_POLL_INTERVAL_MS,
+    MIN_POLL_INTERVAL_MS,
     MQTT_TOPIC_ACK,
+    MQTT_TOPIC_ANOMALIES,
+    MQTT_TOPIC_SENSORS,
     SENSOR_GROUPS,
 )
 
@@ -431,52 +435,31 @@ def create_app(
         logger.warning("UI static directory does not exist: %s", ui_static_dir)
 
     ui_public_config = sanitize_ui_config(ui_config, ui_static_available, config)
-    ui_poll_interval_s = max(int(ui_public_config["poll_interval_ms"]), 100) / 1000.0
-    ui_ws_path = str(ui_public_config.get("ws_path", DEFAULT_UI_WS_PATH))
-    if not ui_ws_path.startswith("/"):
-        logger.warning("Invalid ui.ws_path=%s, falling back to %s", ui_ws_path, DEFAULT_UI_WS_PATH)
-        ui_ws_path = DEFAULT_UI_WS_PATH
+    ui_poll_interval_s = max(int(ui_public_config["poll_interval_ms"]), MIN_POLL_INTERVAL_MS) / 1000.0
+
+    def _validated_path(config_key: str, default: str) -> str:
+        """Validate a UI path starts with '/', falling back to *default*."""
+        value = str(ui_public_config.get(config_key, default))
+        if value.startswith("/"):
+            return value
+        logger.warning("Invalid ui.%s=%s, falling back to %s", config_key, value, default)
+        return default
+
+    ui_ws_path = _validated_path("ws_path", DEFAULT_UI_WS_PATH)
 
     ui_anomaly_poll_interval_s = max(
         int(ui_public_config.get("anomaly_poll_interval_ms", 2000)),
-        250,
+        MIN_ANOMALY_POLL_INTERVAL_MS,
     ) / 1000.0
-    ui_anomaly_ws_path = str(
-        ui_public_config.get("anomaly_ws_path", DEFAULT_UI_ANOMALY_WS_PATH),
-    )
-    if not ui_anomaly_ws_path.startswith("/"):
-        logger.warning(
-            "Invalid ui.anomaly_ws_path=%s, falling back to %s",
-            ui_anomaly_ws_path,
-            DEFAULT_UI_ANOMALY_WS_PATH,
-        )
-        ui_anomaly_ws_path = DEFAULT_UI_ANOMALY_WS_PATH
+    ui_anomaly_ws_path = _validated_path("anomaly_ws_path", DEFAULT_UI_ANOMALY_WS_PATH)
 
     agent_enabled = bool(ui_public_config.get("agent_enabled", True))
-    agent_chat_path = str(
-        ui_public_config.get("agent_chat_path", DEFAULT_UI_AGENT_CHAT_PATH),
-    )
-    if not agent_chat_path.startswith("/"):
-        logger.warning(
-            "Invalid ui.agent_chat_path=%s, falling back to %s",
-            agent_chat_path,
-            DEFAULT_UI_AGENT_CHAT_PATH,
-        )
-        agent_chat_path = DEFAULT_UI_AGENT_CHAT_PATH
+    agent_chat_path = _validated_path("agent_chat_path", DEFAULT_UI_AGENT_CHAT_PATH)
 
     anomaly_model_id = str(ui_public_config.get("anomaly_model_id", "anomaly_detector"))
-    anomaly_history_limit = max(int(ui_public_config.get("anomaly_history_limit", 1)), 1)
+    anomaly_history_limit = max(int(ui_public_config.get("anomaly_history_limit", 1)), MIN_ACK_HISTORY_LIMIT)
     anomaly_ack_enabled = bool(ui_public_config.get("anomaly_ack_enabled", True))
-    anomaly_ack_path = str(
-        ui_public_config.get("anomaly_ack_path", DEFAULT_UI_ANOMALY_ACK_PATH),
-    )
-    if not anomaly_ack_path.startswith("/"):
-        logger.warning(
-            "Invalid ui.anomaly_ack_path=%s, falling back to %s",
-            anomaly_ack_path,
-            DEFAULT_UI_ANOMALY_ACK_PATH,
-        )
-        anomaly_ack_path = DEFAULT_UI_ANOMALY_ACK_PATH
+    anomaly_ack_path = _validated_path("anomaly_ack_path", DEFAULT_UI_ANOMALY_ACK_PATH)
 
     anomaly_ack_history_limit = max(
         int(ui_public_config.get("anomaly_ack_history_limit", 500)),
@@ -884,6 +867,7 @@ def create_app(
             request: Request = None,  # type: ignore[assignment]
         ) -> EventSourceResponse:
             """SSE streaming endpoint for agent chat — yields token-by-token."""
+            logger.debug("SSE agent stream: query_len=%d", len(query))
             if not query.strip():
                 raise HTTPException(status_code=400, detail="query parameter required")
             if len(query) > AGENT_CHAT_QUERY_MAX_LENGTH:
@@ -914,7 +898,7 @@ def create_app(
                 },
             }
 
-            async def _event_generator():
+            async def _event_generator() -> AsyncIterator[Dict[str, str]]:
                 try:
                     if hasattr(agent_runner, "run_streaming"):
                         async for sse_event in agent_runner.run_streaming(event):
@@ -992,8 +976,8 @@ def create_app(
         try:
             if await mqtt_publisher.publish(MQTT_TOPIC_ACK, record):
                 _mqtt_messages_published += 1
-        except Exception:
-            pass  # MQTT errors must never break the ACK endpoint
+        except Exception as mqtt_exc:
+            logger.debug("MQTT ACK publish failed (non-blocking): %s", mqtt_exc)
 
         return {
             "ok": True,
@@ -1011,7 +995,7 @@ def create_app(
     ) -> Dict[str, Any]:
         """Return paginated anomaly acknowledgment history."""
         effective_page_size = page_size if page_size > 0 else anomaly_history_page_size
-        effective_page_size = max(1, min(effective_page_size, 500))
+        effective_page_size = max(1, min(effective_page_size, MAX_ANOMALY_HISTORY_PAGE_SIZE))
         effective_page = max(1, page)
         offset = (effective_page - 1) * effective_page_size
 
@@ -1062,8 +1046,8 @@ def create_app(
                 try:
                     if await mqtt_publisher.publish(MQTT_TOPIC_SENSORS, payload):
                         _mqtt_messages_published += 1
-                except Exception:
-                    pass  # MQTT errors must never break the WS stream
+                except Exception as mqtt_exc:
+                    logger.debug("MQTT sensor publish failed (non-blocking): %s", mqtt_exc)
                 await asyncio.sleep(ui_poll_interval_s)
         except WebSocketDisconnect:
             logger.info("Sensor stream client disconnected")
@@ -1086,8 +1070,8 @@ def create_app(
                 try:
                     if await mqtt_publisher.publish(MQTT_TOPIC_ANOMALIES, payload):
                         _mqtt_messages_published += 1
-                except Exception:
-                    pass  # MQTT errors must never break the WS stream
+                except Exception as mqtt_exc:
+                    logger.debug("MQTT anomaly publish failed (non-blocking): %s", mqtt_exc)
                 await asyncio.sleep(ui_anomaly_poll_interval_s)
         except WebSocketDisconnect:
             logger.info("Anomaly stream client disconnected")

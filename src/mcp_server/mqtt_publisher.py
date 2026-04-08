@@ -14,6 +14,11 @@ import json
 import logging
 from typing import Any, Dict, Protocol, runtime_checkable
 
+from utils.constants import (
+    MQTT_DEFAULT_QOS,
+    MQTT_DEFAULT_RECONNECT_DELAY_S,
+    MQTT_MAX_RECONNECT_DELAY_S,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,19 +59,17 @@ class PahoMQTTPublisher:
     which mirrors the ``MQTTConfig`` Pydantic model fields.
     """
 
-    DEFAULT_RECONNECT_DELAY_S = 5.0
-    DEFAULT_MAX_RECONNECT_DELAY_S = 60.0
-
     def __init__(self, config: Dict[str, Any]) -> None:
         self._host = str(config.get("host", "localhost"))
         self._port = int(config.get("port", 1883))
         self._topic_prefix = str(config.get("topic_prefix", "tricorder"))
         self._keepalive_s = int(config.get("keepalive_s", 60))
+        self._qos = int(config.get("qos", MQTT_DEFAULT_QOS))
         self._reconnect_delay_s = float(
-            config.get("reconnect_delay_s", self.DEFAULT_RECONNECT_DELAY_S)
+            config.get("reconnect_delay_s", MQTT_DEFAULT_RECONNECT_DELAY_S)
         )
         self._max_reconnect_delay_s = float(
-            config.get("max_reconnect_delay_s", self.DEFAULT_MAX_RECONNECT_DELAY_S)
+            config.get("max_reconnect_delay_s", MQTT_MAX_RECONNECT_DELAY_S)
         )
         self._connected = False
         self._client: Any = None
@@ -150,7 +153,7 @@ class PahoMQTTPublisher:
         full_topic = self._full_topic(topic)
         try:
             message = json.dumps(payload, default=str)
-            result = self._client.publish(full_topic, message, qos=1)
+            result = self._client.publish(full_topic, message, qos=self._qos)
             if result.rc == 0:
                 logger.debug("MQTT published: topic=%s, size=%d", full_topic, len(message))
                 return True

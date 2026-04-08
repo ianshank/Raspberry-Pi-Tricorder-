@@ -264,3 +264,35 @@ logging:
     config_file = tmp_path / "test_config.yaml"
     config_file.write_text(config_content)
     return config_file
+
+
+# ========== MQTT CONFIG FIXTURES ==========
+
+@pytest.fixture
+def mqtt_config():
+    """MQTT publisher test configuration."""
+    return {
+        "host": "localhost",
+        "port": 1883,
+        "topic_prefix": "test/tricorder",
+        "keepalive_s": 30,
+        "qos": 1,
+        "enabled": True,
+    }
+
+
+# ========== CONFIG MANAGER FIXTURES ==========
+
+@pytest.fixture
+def config_manager():
+    """ConfigManager with admin enabled for testing."""
+    from utils.config import ConfigManager, TricorderConfig
+
+    config = TricorderConfig(
+        admin={
+            "enabled": True,
+            "hmac_secret": "test-secret",
+            "allowed_sections": ["ui", "logging", "feature_flags"],
+        },
+    )
+    return ConfigManager(config)

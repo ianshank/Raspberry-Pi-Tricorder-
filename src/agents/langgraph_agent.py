@@ -4,7 +4,7 @@ Implements a stateful agent with sensor monitoring, evidence gathering,
 tool planning/execution, and report synthesis nodes.
 """
 
-from typing import Any, Dict, List, Optional, TypedDict, Annotated, cast
+from typing import Any, AsyncIterator, Dict, List, Optional, TypedDict, Annotated, cast
 from datetime import datetime, timezone
 from enum import Enum
 import logging
@@ -512,7 +512,7 @@ class TricorderAgent:
 
     async def run_streaming(
         self, anomaly_event: Dict[str, Any],
-    ) -> Any:  # AsyncIterator[Dict[str, Any]]
+    ) -> AsyncIterator[Dict[str, Any]]:
         """Run the agent and yield SSE-compatible event dicts.
 
         Yields dicts with ``event`` and ``data`` keys suitable for

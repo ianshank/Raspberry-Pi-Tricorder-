@@ -35,6 +35,9 @@ MQTT_TOPIC_SENSORS: str = "sensors"
 MQTT_TOPIC_ANOMALIES: str = "anomalies"
 MQTT_TOPIC_AGENT_REPORTS: str = "agent/reports"
 MQTT_TOPIC_ACK: str = "anomalies/ack"
+MQTT_DEFAULT_QOS: int = 1
+MQTT_DEFAULT_RECONNECT_DELAY_S: float = 5.0
+MQTT_MAX_RECONNECT_DELAY_S: float = 60.0
 
 # ---------------------------------------------------------------------------
 # Admin API constants
@@ -42,6 +45,19 @@ MQTT_TOPIC_ACK: str = "anomalies/ack"
 ADMIN_HMAC_HEADER: str = "X-Tricorder-HMAC"
 ADMIN_MAX_PAYLOAD_BYTES: int = 65536
 ADMIN_DEFAULT_ALLOWED_SECTIONS: tuple = ("ui", "logging", "feature_flags")
+
+# ---------------------------------------------------------------------------
+# UI polling interval floors (milliseconds)
+# ---------------------------------------------------------------------------
+MIN_POLL_INTERVAL_MS: int = 100
+MIN_ANOMALY_POLL_INTERVAL_MS: int = 250
+
+# ---------------------------------------------------------------------------
+# Anomaly history pagination limits
+# ---------------------------------------------------------------------------
+MIN_ANOMALY_HISTORY_PAGE_SIZE: int = 10
+MAX_ANOMALY_HISTORY_PAGE_SIZE: int = 500
+MIN_ACK_HISTORY_LIMIT: int = 1
 
 # ---------------------------------------------------------------------------
 # Request validation limits

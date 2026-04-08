@@ -152,6 +152,7 @@ class OllamaClient:
                             if chunk.get("done", False):
                                 break
                         except json.JSONDecodeError:
+                            logger.debug("LLM stream: skipping malformed JSON line")
                             continue
         except httpx.TimeoutException as exc:
             logger.warning("LLM stream timed out after %.1fs", self.timeout_s)

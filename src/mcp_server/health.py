@@ -69,7 +69,7 @@ def build_detailed_health(
         else:
             overall = "healthy"
 
-    return {
+    result = {
         "status": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": version,
@@ -81,3 +81,10 @@ def build_detailed_health(
             "messages_published": mqtt_messages_published,
         },
     }
+    logger.debug(
+        "Detailed health: status=%s, sensors=%d, uptime=%.1fs",
+        overall,
+        len(sensor_health),
+        uptime_s,
+    )
+    return result
