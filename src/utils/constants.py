@@ -4,7 +4,7 @@ Centralizes magic numbers, threshold defaults, and enumeration values
 that are referenced by multiple modules.
 """
 
-from typing import Dict, Tuple
+from typing import Dict, FrozenSet, Tuple
 
 # ---------------------------------------------------------------------------
 # Severity thresholds used by both the MCP server anomaly pipeline and
@@ -58,6 +58,26 @@ MAX_ANOMALY_HISTORY_PAGE_SIZE: int = 500
 MIN_ACK_HISTORY_LIMIT: int = 1
 
 # ---------------------------------------------------------------------------
+# Auth middleware — public paths that skip API key checks
+# ---------------------------------------------------------------------------
+AUTH_PUBLIC_PATHS: FrozenSet[str] = frozenset({"/health", "/docs", "/openapi.json"})
+
+# ---------------------------------------------------------------------------
 # Request validation limits
 # ---------------------------------------------------------------------------
 AGENT_CHAT_QUERY_MAX_LENGTH: int = 4000
+
+# ---------------------------------------------------------------------------
+# SQLite pragmas (shared by ack_store and session_store)
+# ---------------------------------------------------------------------------
+SQLITE_BUSY_TIMEOUT_MS: int = 5000
+
+# ---------------------------------------------------------------------------
+# Model inference performance thresholds
+# ---------------------------------------------------------------------------
+INFERENCE_WARN_THRESHOLD_MS: float = 100.0
+
+# ---------------------------------------------------------------------------
+# Simulation defaults
+# ---------------------------------------------------------------------------
+SIMULATED_SENSOR_CONFIDENCE: float = 0.92

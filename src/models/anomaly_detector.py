@@ -11,6 +11,7 @@ from models.base import (
     ModelInferenceError, ModelRegistry, InferenceAdapter,
     validate_model_input,
 )
+from utils.constants import INFERENCE_WARN_THRESHOLD_MS
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +102,10 @@ class AnomalyDetector(BaseModel):
 
             elapsed_ms = (time.monotonic() - start_time) * 1000
             self._record_inference(elapsed_ms)
-            if elapsed_ms > 100:
+            if elapsed_ms > INFERENCE_WARN_THRESHOLD_MS:
                 logger.warning(
-                    "%s inference slow: %.1fms (threshold: 100ms)",
-                    self.model_id, elapsed_ms,
+                    "%s inference slow: %.1fms (threshold: %.0fms)",
+                    self.model_id, elapsed_ms, INFERENCE_WARN_THRESHOLD_MS,
                 )
             self.status = ModelStatus.LOADED
 

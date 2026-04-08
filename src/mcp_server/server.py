@@ -43,6 +43,7 @@ from sensors.manager import SensorManager
 from utils.constants import (
     ADMIN_MAX_PAYLOAD_BYTES,
     AGENT_CHAT_QUERY_MAX_LENGTH,
+    AUTH_PUBLIC_PATHS,
     DEFAULT_SEVERITY_THRESHOLDS,
     MAX_ANOMALY_HISTORY_PAGE_SIZE,
     MIN_ACK_HISTORY_LIMIT,
@@ -53,6 +54,7 @@ from utils.constants import (
     MQTT_TOPIC_ANOMALIES,
     MQTT_TOPIC_SENSORS,
     SENSOR_GROUPS,
+    SIMULATED_SENSOR_CONFIDENCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,7 +75,6 @@ class AuthenticationError(MCPServerError):
     pass
 
 
-AUTH_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json"}
 
 
 class Tool(BaseModel):
@@ -346,7 +347,7 @@ class _SimulatedSensor(BaseSensor):
             sensor_id=self.sensor_id,
             timestamp=datetime.now(timezone.utc),
             value=_build_simulated_sensor_value(self.sensor_id, self._sensors_config),
-            confidence=0.92,
+            confidence=SIMULATED_SENSOR_CONFIDENCE,
             metadata={"simulated": True},
         )
 
