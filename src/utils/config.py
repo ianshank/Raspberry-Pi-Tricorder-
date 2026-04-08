@@ -13,6 +13,7 @@ import json
 import threading
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, field_validator, model_validator
+from utils.constants import DEFAULT_SEVERITY_THRESHOLDS
 import logging
 
 logger = logging.getLogger(__name__)
@@ -165,7 +166,7 @@ class LangGraphAgentConfig(BaseModel):
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
     severity_thresholds: Dict[str, float] = Field(
-        default_factory=lambda: {"critical": 0.9, "high": 0.75, "medium": 0.5},
+        default_factory=lambda: DEFAULT_SEVERITY_THRESHOLDS.copy(),
         description="Anomaly score thresholds for severity classification",
     )
     max_tools_per_iteration: int = Field(default=3, gt=0, le=20)
@@ -196,7 +197,7 @@ class LangGraphAgentConfig(BaseModel):
     @field_validator('severity_thresholds', mode='before')
     @classmethod
     def validate_severity_thresholds(cls, v: Any) -> Dict[str, float]:
-        defaults = {"critical": 0.9, "high": 0.75, "medium": 0.5}
+        defaults = DEFAULT_SEVERITY_THRESHOLDS.copy()
         if v is None:
             return defaults.copy()
         if not isinstance(v, dict):

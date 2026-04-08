@@ -143,7 +143,7 @@ def register_anomaly_tools(
         if not hasattr(model, 'get_anomaly_history'):
             return {"error": f"Model {model_id} does not support anomaly history"}
 
-        history = model.get_anomaly_history(limit=limit)
+        history = model.get_anomaly_history(limit=limit)  # type: ignore[attr-defined]
         return {
             "model_id": model_id,
             "entries": history,

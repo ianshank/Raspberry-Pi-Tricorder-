@@ -33,7 +33,6 @@ SENSOR_GROUPS: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 MQTT_TOPIC_SENSORS: str = "sensors"
 MQTT_TOPIC_ANOMALIES: str = "anomalies"
-MQTT_TOPIC_AGENT_REPORTS: str = "agent/reports"
 MQTT_TOPIC_ACK: str = "anomalies/ack"
 MQTT_DEFAULT_QOS: int = 1
 MQTT_DEFAULT_RECONNECT_DELAY_S: float = 5.0
@@ -44,7 +43,6 @@ MQTT_MAX_RECONNECT_DELAY_S: float = 60.0
 # ---------------------------------------------------------------------------
 ADMIN_HMAC_HEADER: str = "X-Tricorder-HMAC"
 ADMIN_MAX_PAYLOAD_BYTES: int = 65536
-ADMIN_DEFAULT_ALLOWED_SECTIONS: tuple = ("ui", "logging", "feature_flags")
 
 # ---------------------------------------------------------------------------
 # UI polling interval floors (milliseconds)

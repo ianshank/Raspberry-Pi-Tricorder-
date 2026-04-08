@@ -6,7 +6,7 @@ All functions are stateless and have no server dependencies.
 
 from typing import Any, Dict, List
 
-from utils.constants import SENSOR_GROUPS
+from utils.constants import DEFAULT_SEVERITY_THRESHOLDS, SENSOR_GROUPS
 
 # Default websocket / endpoint paths (also defined in server.py for route setup)
 DEFAULT_UI_WS_PATH = "/ws/sensors"
@@ -130,7 +130,7 @@ def sanitize_ui_config(
         "anomaly_ack_history_limit": int(ui_config.get("anomaly_ack_history_limit", 500)),
         "anomaly_ack_db_path": str(ui_config.get("anomaly_ack_db_path", "")),
         "anomaly_ack_persistent": bool(ui_config.get("anomaly_ack_db_path", "")),
-        "anomaly_alert_threshold": float(ui_config.get("anomaly_alert_threshold", 0.75)),
+        "anomaly_alert_threshold": float(ui_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"])),
         "anomaly_history_path": str(ui_config.get("anomaly_history_path", "/ui/anomalies/history")),
         "anomaly_history_page_size": int(ui_config.get("anomaly_history_page_size", 50)),
         "agent_enabled": bool(ui_config.get("agent_enabled", True)),

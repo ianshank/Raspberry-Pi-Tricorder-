@@ -5,6 +5,7 @@ All configuration loaded from TricorderConfig — no hardcoded values.
 """
 
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import asyncio
@@ -12,6 +13,7 @@ import hmac
 import logging
 import math
 import random
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -39,9 +41,12 @@ from mcp_server.ui_helpers import (
 from sensors.base import BaseSensor, SensorReading, SensorStatus
 from sensors.manager import SensorManager
 from utils.constants import (
+    ADMIN_MAX_PAYLOAD_BYTES,
     AGENT_CHAT_QUERY_MAX_LENGTH,
+    DEFAULT_SEVERITY_THRESHOLDS,
     MAX_ANOMALY_HISTORY_PAGE_SIZE,
     MIN_ACK_HISTORY_LIMIT,
+    MIN_ANOMALY_HISTORY_PAGE_SIZE,
     MIN_ANOMALY_POLL_INTERVAL_MS,
     MIN_POLL_INTERVAL_MS,
     MQTT_TOPIC_ACK,
@@ -404,11 +409,34 @@ def create_app(
     if registry is None:
         sensor_manager = _bootstrap_default_tools(reg, config)
 
+    # ---------------------------------------------------------------
+    # MQTT publisher (created before FastAPI for lifespan access)
+    # ---------------------------------------------------------------
+    feature_flags_cfg = config.get("feature_flags", {})
+    if not isinstance(feature_flags_cfg, dict):
+        feature_flags_cfg = {}
+    mqtt_config = config.get("mqtt", {})
+    if not isinstance(mqtt_config, dict):
+        mqtt_config = {}
+    mqtt_publisher = create_mqtt_publisher(
+        mqtt_config=mqtt_config,
+        enabled=bool(feature_flags_cfg.get("mqtt_publishing", True)),
+    )
+    _mqtt_messages_published = 0
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await mqtt_publisher.connect()
+        yield
+        await mqtt_publisher.disconnect()
+
     app = FastAPI(
         title=config.get("project_name", config.get("title", "Tricorder MCP Server")),
         version=config.get("version", "1.0.0"),
+        lifespan=_lifespan,
     )
     app.state.tool_registry = reg
+    app.state.mqtt_publisher = mqtt_publisher
     if sensor_manager is not None:
         app.state.sensor_manager = sensor_manager
 
@@ -471,9 +499,9 @@ def create_app(
     if not anomaly_history_path.startswith("/"):
         anomaly_history_path = "/ui/anomalies/history"
     anomaly_history_page_size = max(
-        int(ui_public_config.get("anomaly_history_page_size", 50)), 10,
+        int(ui_public_config.get("anomaly_history_page_size", 50)), MIN_ANOMALY_HISTORY_PAGE_SIZE,
     )
-    anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", 0.75))
+    anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"]))
     # Read severity thresholds from agent config for consistent labeling
     _agent_cfg = config.get("agent", {})
     severity_thresholds: Optional[Dict[str, float]] = (
@@ -533,34 +561,9 @@ def create_app(
             logger.warning("Agent chat disabled: failed to initialize agent (%s)", e)
 
     # ---------------------------------------------------------------
-    # MQTT publisher
-    # ---------------------------------------------------------------
-    feature_flags_cfg = config.get("feature_flags", {})
-    if not isinstance(feature_flags_cfg, dict):
-        feature_flags_cfg = {}
-    mqtt_config = config.get("mqtt", {})
-    if not isinstance(mqtt_config, dict):
-        mqtt_config = {}
-    mqtt_publisher = create_mqtt_publisher(
-        mqtt_config=mqtt_config,
-        enabled=bool(feature_flags_cfg.get("mqtt_publishing", True)),
-    )
-    app.state.mqtt_publisher = mqtt_publisher
-    _mqtt_messages_published = 0
-
-    @app.on_event("startup")
-    async def _mqtt_connect() -> None:
-        await mqtt_publisher.connect()
-
-    @app.on_event("shutdown")
-    async def _mqtt_disconnect() -> None:
-        await mqtt_publisher.disconnect()
-
-    # ---------------------------------------------------------------
     # Health / uptime tracking
     # ---------------------------------------------------------------
-    import time as _time_mod
-    _server_start_time = _time_mod.monotonic()
+    _server_start_time = time.monotonic()
     _project_version = str(config.get("version", "1.0.0"))
 
     health_detailed_enabled = bool(server_config.get("health_detailed_enabled", True))
@@ -588,7 +591,7 @@ def create_app(
             admin_router = create_admin_router(
                 config_manager=config_manager,
                 hmac_secret=str(admin_hmac_secret),
-                max_payload_bytes=int(admin_config.get("max_payload_bytes", 65536)),
+                max_payload_bytes=int(admin_config.get("max_payload_bytes", ADMIN_MAX_PAYLOAD_BYTES)),
             )
             app.include_router(admin_router)
             logger.info("Admin config hot-reload enabled")
@@ -858,7 +861,7 @@ def create_app(
         agent_chat_stream_path = "/ui/agent/chat/stream"
 
     if agent_stream_enabled and agent_enabled and agent_runner is not None:
-        from sse_starlette.sse import EventSourceResponse  # type: ignore[import-untyped]
+        from sse_starlette.sse import EventSourceResponse  # type: ignore[import-untyped,import-not-found]
 
         @app.get(agent_chat_stream_path)
         async def ui_agent_chat_stream(
