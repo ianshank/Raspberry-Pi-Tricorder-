@@ -59,6 +59,13 @@ class TestConfigManagerReload:
         assert "ui" in diff
         assert manager.config.ui.debug is True
 
+    @pytest.mark.parametrize("level", ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+    def test_reload_all_valid_log_levels(self, base_config, level):
+        """All valid log levels can be applied via reload."""
+        mgr = ConfigManager(base_config)
+        mgr.reload({"logging": {"level": level}})
+        assert mgr.config.logging.level == level
+
     def test_reload_no_change_returns_empty_diff(self, manager):
         current_level = manager.config.logging.level
         diff = manager.reload({"logging": {"level": current_level}})
@@ -139,6 +146,7 @@ class TestConfigManagerObservers:
 
 
 class TestConfigManagerThreadSafety:
+    @pytest.mark.slow
     def test_concurrent_reads_and_writes(self, manager):
         """Verify no data corruption under concurrent access."""
         errors = []

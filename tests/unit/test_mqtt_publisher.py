@@ -68,6 +68,11 @@ class TestPahoMQTTPublisher:
         assert publisher._port == 1883
         assert publisher._topic_prefix == "test/tricorder"
         assert publisher._keepalive_s == 30
+        assert publisher._qos == 1  # from MQTT_DEFAULT_QOS
+
+    def test_init_custom_qos(self):
+        pub = PahoMQTTPublisher({"qos": 0})
+        assert pub._qos == 0
 
     def test_init_defaults(self):
         pub = PahoMQTTPublisher({})
@@ -170,6 +175,8 @@ class TestPahoMQTTPublisher:
         assert call_args[0][0] == "test/tricorder/sensors"  # uses config prefix
         published_json = json.loads(call_args[0][1])
         assert published_json["temperature"] == 22.5
+        # Verify QoS is passed from config (default=1)
+        assert call_args[1]["qos"] == 1 or call_args[0][2] == 1
 
     @pytest.mark.asyncio
     async def test_publish_not_connected(self, publisher):

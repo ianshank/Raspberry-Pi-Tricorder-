@@ -196,6 +196,25 @@ def agent_config():
         "max_tokens": 512,
         "mission_mode": "patrol",
         "human_in_loop_threshold": "HIGH",
+        "max_iterations": 2,
+    }
+
+
+@pytest.fixture
+def mock_tool_caller():
+    """Mock tool caller for agent tests."""
+    def caller(name, args):
+        return {"sensor_id": args.get("sensor_id", "test"), "value": 42.0}
+    return caller
+
+
+@pytest.fixture
+def anomaly_event():
+    """Sample anomaly event for agent tests."""
+    return {
+        "anomaly_score": 0.8,
+        "affected_sensors": ["bme680"],
+        "timestamp": "2026-01-01T00:00:00Z",
     }
 
 
