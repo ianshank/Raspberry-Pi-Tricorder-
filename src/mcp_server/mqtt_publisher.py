@@ -15,6 +15,7 @@ import logging
 from typing import Any, Dict, Protocol, runtime_checkable
 
 from utils.constants import (
+    MQTT_DEFAULT_PORT,
     MQTT_DEFAULT_QOS,
     MQTT_DEFAULT_RECONNECT_DELAY_S,
     MQTT_MAX_RECONNECT_DELAY_S,
@@ -61,7 +62,7 @@ class PahoMQTTPublisher:
 
     def __init__(self, config: Dict[str, Any]) -> None:
         self._host = str(config.get("host", "localhost"))
-        self._port = int(config.get("port", 1883))
+        self._port = int(config.get("port", MQTT_DEFAULT_PORT))
         self._topic_prefix = str(config.get("topic_prefix", "tricorder"))
         self._keepalive_s = int(config.get("keepalive_s", 60))
         self._qos = int(config.get("qos", MQTT_DEFAULT_QOS))

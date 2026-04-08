@@ -12,6 +12,8 @@ import logging
 import time
 from typing import Any, AsyncIterator, Optional, Protocol, runtime_checkable
 
+from utils.constants import DEFAULT_LLM_ENDPOINT, DEFAULT_LLM_MAX_TOKENS
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +45,7 @@ class LLMClient(Protocol):
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> str:
         """Generate text from an LLM. Returns the generated text."""
         ...
@@ -61,7 +63,7 @@ class OllamaClient:
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434",
+        endpoint: str = DEFAULT_LLM_ENDPOINT,
         model: str = "qwen2.5:3b",
         timeout_s: float = 30.0,
     ) -> None:
@@ -74,7 +76,7 @@ class OllamaClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> str:
         import httpx
 
@@ -115,7 +117,7 @@ class OllamaClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> AsyncIterator[str]:
         """Stream tokens from Ollama using ``"stream": True``.
 
@@ -183,7 +185,7 @@ class MockLLMClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> str:
         self.last_prompt = prompt
         self.call_count += 1
@@ -193,7 +195,7 @@ class MockLLMClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> AsyncIterator[str]:
         """Yield response word-by-word for testing."""
         self.last_prompt = prompt

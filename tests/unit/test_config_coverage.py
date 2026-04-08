@@ -36,7 +36,7 @@ class TestModelConfigValidation:
     """Line 127: invalid quantization."""
 
     def test_invalid_quantization_raises(self):
-        with pytest.raises(ValidationError, match="Quantization must be one of"):
+        with pytest.raises(ValidationError, match="quantization must be one of"):
             ModelConfig(
                 model_path="test.onnx",
                 input_shape=[1, 256, 10],
@@ -62,12 +62,12 @@ class TestLangGraphAgentConfigValidation:
 
     def test_invalid_mission_mode_raises(self):
         """Line 170."""
-        with pytest.raises(ValidationError, match="Mission mode must be one of"):
+        with pytest.raises(ValidationError, match="mission_mode must be one of"):
             LangGraphAgentConfig(mission_mode="combat")
 
     def test_invalid_human_in_loop_threshold_raises(self):
         """Line 178."""
-        with pytest.raises(ValidationError, match="Threshold must be one of"):
+        with pytest.raises(ValidationError, match="human_in_loop_threshold must be one of"):
             LangGraphAgentConfig(human_in_loop_threshold="EXTREME")
 
     def test_severity_thresholds_unknown_key_raises(self):

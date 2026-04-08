@@ -10,7 +10,12 @@ from enum import Enum
 import logging
 import operator
 
-from utils.constants import DEFAULT_SEVERITY_THRESHOLDS, SEVERITY_LEVELS
+from utils.constants import (
+    DEFAULT_LLM_ENDPOINT,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_SEVERITY_THRESHOLDS,
+    SEVERITY_LEVELS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +85,22 @@ class TricorderAgent:
     DEFAULT_MAX_TOOLS_PER_ITERATION = 3
     DEFAULT_MAX_ITERATIONS = 5
 
+    # Fields that use Annotated list accumulation semantics.
+    _LIST_ACCUMULATE_KEYS = frozenset({"messages", "evidence", "tool_results"})
+
+    @staticmethod
+    def _merge_state(state: "AgentState", updates: Dict[str, Any]) -> None:
+        """Merge updates into state, accumulating Annotated list fields."""
+        mutable = cast(Dict[str, Any], state)
+        for key, value in updates.items():
+            if key in TricorderAgent._LIST_ACCUMULATE_KEYS and isinstance(value, list):
+                existing = mutable.get(key, [])
+                if not isinstance(existing, list):
+                    existing = []
+                mutable[key] = existing + value
+            else:
+                mutable[key] = value
+
     def __init__(
         self,
         config: Dict[str, Any],
@@ -93,10 +114,10 @@ class TricorderAgent:
             llm_client: Optional LLMClient protocol implementation for report synthesis
         """
         self.config = config
-        self.llm_endpoint = config.get("llm_endpoint", "http://localhost:11434")
+        self.llm_endpoint = config.get("llm_endpoint", DEFAULT_LLM_ENDPOINT)
         self.model_name = config.get("model_name", "qwen2.5:3b")
         self.temperature = config.get("temperature", 0.1)
-        self.max_tokens = config.get("max_tokens", 512)
+        self.max_tokens = config.get("max_tokens", DEFAULT_LLM_MAX_TOKENS)
         self.mission_mode = config.get("mission_mode", "patrol")
         self.human_in_loop_threshold = Severity.from_string(
             config.get("human_in_loop_threshold", "HIGH")
@@ -475,28 +496,16 @@ class TricorderAgent:
         # Fallback: sequential execution (manually accumulate list fields)
         state = initial_state
 
-        def merge_state(state: AgentState, updates: Dict[str, Any]) -> None:
-            """Merge updates, accumulating Annotated list fields."""
-            mutable_state = cast(Dict[str, Any], state)
-            for key, value in updates.items():
-                if key in ("messages", "evidence", "tool_results") and isinstance(value, list):
-                    existing = mutable_state.get(key, [])
-                    if not isinstance(existing, list):
-                        existing = []
-                    mutable_state[key] = existing + value
-                else:
-                    mutable_state[key] = value
-
-        merge_state(state, self.sensor_monitor_node(state))
-        merge_state(state, self.evidence_gather_node(state))
-        merge_state(state, self.plan_tools_node(state))
+        self._merge_state(state, self.sensor_monitor_node(state))
+        self._merge_state(state, self.evidence_gather_node(state))
+        self._merge_state(state, self.plan_tools_node(state))
 
         for _ in range(self.max_iterations):
-            merge_state(state, self.execute_tools_node(state))
+            self._merge_state(state, self.execute_tools_node(state))
             decision = self._should_continue(state)
             if decision == "synthesize":
                 break
-            merge_state(state, self.plan_tools_node(state))
+            self._merge_state(state, self.plan_tools_node(state))
         else:
             # Loop exhausted without a "synthesize" decision — log timeout warning
             logger.warning(
@@ -507,7 +516,7 @@ class TricorderAgent:
                 f"Agent did not complete within {self.max_iterations} iterations"
             )
 
-        merge_state(state, self.synthesize_report_node(state))
+        self._merge_state(state, self.synthesize_report_node(state))
         return dict(state)
 
     async def run_streaming(
@@ -536,37 +545,26 @@ class TricorderAgent:
 
         state = initial_state
 
-        def merge_state(state: AgentState, updates: Dict[str, Any]) -> None:
-            mutable = cast(Dict[str, Any], state)
-            for key, value in updates.items():
-                if key in ("messages", "evidence", "tool_results") and isinstance(value, list):
-                    existing = mutable.get(key, [])
-                    if not isinstance(existing, list):
-                        existing = []
-                    mutable[key] = existing + value
-                else:
-                    mutable[key] = value
-
         # 1. Sensor monitor
         yield {"event": "node_enter", "data": {"node": "sensor_monitor"}}
-        merge_state(state, self.sensor_monitor_node(state))
+        self._merge_state(state, self.sensor_monitor_node(state))
 
         # 2. Evidence gather
         yield {"event": "node_enter", "data": {"node": "evidence_gather"}}
-        merge_state(state, self.evidence_gather_node(state))
+        self._merge_state(state, self.evidence_gather_node(state))
 
         # 3. Plan tools
         yield {"event": "node_enter", "data": {"node": "plan_tools"}}
-        merge_state(state, self.plan_tools_node(state))
+        self._merge_state(state, self.plan_tools_node(state))
 
         # 4. Execute loop
         for _ in range(self.max_iterations):
             yield {"event": "node_enter", "data": {"node": "execute_tools"}}
-            merge_state(state, self.execute_tools_node(state))
+            self._merge_state(state, self.execute_tools_node(state))
             decision = self._should_continue(state)
             if decision == "synthesize":
                 break
-            merge_state(state, self.plan_tools_node(state))
+            self._merge_state(state, self.plan_tools_node(state))
 
         # 5. Synthesize — stream tokens if LLM client supports it
         yield {"event": "node_enter", "data": {"node": "synthesize_report"}}

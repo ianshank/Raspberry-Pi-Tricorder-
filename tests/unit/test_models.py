@@ -80,13 +80,6 @@ class TestAnomalyDetector:
         result = model.predict(input_data)
         assert "anomaly_score" in result.output
 
-    def test_set_baseline(self, mock_inference_adapter, anomaly_model_config):
-        model = AnomalyDetector("ad_01", mock_inference_adapter, anomaly_model_config)
-        model.load()
-        baseline = np.random.randn(1, 256, 10).astype(np.float32)
-        model.set_baseline(baseline)
-        assert model._baseline_mse > 0
-
     def test_anomaly_history(self, mock_inference_adapter, anomaly_model_config):
         model = AnomalyDetector("ad_01", mock_inference_adapter, anomaly_model_config)
         model.load()

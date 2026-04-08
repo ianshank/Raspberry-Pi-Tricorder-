@@ -25,7 +25,7 @@ from models.base import (
 from models.anomaly_detector import AnomalyDetector
 from models.fusion_engine import FusionEngine
 from agents.langgraph_agent import AgentError, AgentToolError, AgentTimeoutError
-from mcp_server.server import MCPServerError, ToolExecutionError, AuthenticationError
+from mcp_server.server import MCPServerError
 
 
 # ========== Structured Logging ==========
@@ -151,13 +151,10 @@ class TestAgentExceptions:
 class TestMCPServerExceptions:
     """MCP server exception hierarchy."""
 
-    def test_mcp_server_error_base(self):
-        assert issubclass(ToolExecutionError, MCPServerError)
-        assert issubclass(AuthenticationError, MCPServerError)
-
-    def test_tool_execution_error_message(self):
-        err = ToolExecutionError("Tool timed out")
-        assert "Tool timed out" in str(err)
+    def test_mcp_server_error_is_exception(self):
+        assert issubclass(MCPServerError, Exception)
+        err = MCPServerError("server error")
+        assert "server error" in str(err)
 
 
 # ========== Model Input Validation ==========

@@ -9,6 +9,7 @@ from sensors.base import (
     BaseSensor, SensorReading,
     SensorInitializationError, SensorCommunicationError, SensorFactory,
 )
+from utils.constants import DEFAULT_UART_BAUD_RATE, UART_READ_BUFFER_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class HLKLD2410Sensor(BaseSensor):
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
         self.port = config.get("port", "/dev/ttyAMA0")
-        self.baud_rate = config.get("baud_rate", 115200)
+        self.baud_rate = config.get("baud_rate", DEFAULT_UART_BAUD_RATE)
         self.max_gate = config.get("max_gate", self.DEFAULT_CONFIG["max_gate"])
         self.timeout = config.get("timeout_s", self.DEFAULT_CONFIG["timeout_s"])
         self.command_words = config.get("command_words", self.DEFAULT_COMMAND_WORDS)
@@ -118,7 +119,7 @@ class HLKLD2410Sensor(BaseSensor):
 
     def _do_read(self) -> SensorReading:
         # Read data frame from UART
-        raw_data = self.adapter.read(256)
+        raw_data = self.adapter.read(UART_READ_BUFFER_SIZE)
         if not raw_data:
             raise SensorCommunicationError("No data from LD2410")
 

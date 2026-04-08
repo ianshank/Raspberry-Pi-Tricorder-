@@ -13,7 +13,12 @@ import json
 import threading
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, field_validator, model_validator
-from utils.constants import DEFAULT_SEVERITY_THRESHOLDS
+from utils.constants import (
+    DEFAULT_LLM_ENDPOINT,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_SEVERITY_THRESHOLDS,
+    MQTT_DEFAULT_PORT,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -54,6 +59,15 @@ LCARS_COLORS = {
     "tamarillo",
     "white",
 }
+
+
+def _make_enum_validator(field_name: str, valid_values: frozenset[str]) -> classmethod:
+    """Factory for string-enum field validators — eliminates repeated boilerplate."""
+    def _validate(cls: Any, v: str) -> str:
+        if v not in valid_values:
+            raise ValueError(f"{field_name} must be one of {sorted(valid_values)}, got {v}")
+        return v
+    return classmethod(_validate)
 
 
 class I2CDeviceConfig(BaseModel):
@@ -121,13 +135,9 @@ class ModelConfig(BaseModel):
     confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     window_size: int = Field(default=256, gt=0, description="Sliding window size for time-series models")
 
-    @field_validator('quantization')
-    @classmethod
-    def validate_quantization(cls, v: str) -> str:
-        valid = {"fp32", "fp16", "int8", "int4"}
-        if v not in valid:
-            raise ValueError(f"Quantization must be one of {valid}, got {v}")
-        return v
+    _validate_quantization = field_validator('quantization')(
+        _make_enum_validator("quantization", frozenset({"fp32", "fp16", "int8", "int4"}))
+    )
 
 
 class MCPServerConfig(BaseModel):
@@ -147,21 +157,17 @@ class MCPServerConfig(BaseModel):
         description="Mapping of API key/token to operator_id for identity derivation",
     )
 
-    @field_validator('transport')
-    @classmethod
-    def validate_transport(cls, v: str) -> str:
-        valid = {"http", "stdio"}
-        if v not in valid:
-            raise ValueError(f"Transport must be one of {valid}, got {v}")
-        return v
+    _validate_transport = field_validator('transport')(
+        _make_enum_validator("transport", frozenset({"http", "stdio"}))
+    )
 
 
 class LangGraphAgentConfig(BaseModel):
     """LangGraph agent configuration."""
-    llm_endpoint: str = Field(default="http://localhost:11434")
+    llm_endpoint: str = Field(default=DEFAULT_LLM_ENDPOINT)
     model_name: str = Field(default="qwen2.5:3b")
     temperature: float = Field(default=0.1, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=512, gt=0, le=4096)
+    max_tokens: int = Field(default=DEFAULT_LLM_MAX_TOKENS, gt=0, le=4096)
     checkpoint_db_path: str = Field(default="data/agent_checkpoints.db")
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
@@ -178,21 +184,13 @@ class LangGraphAgentConfig(BaseModel):
         description="HTTP timeout for LLM calls in seconds",
     )
 
-    @field_validator('mission_mode')
-    @classmethod
-    def validate_mission_mode(cls, v: str) -> str:
-        valid = {"patrol", "investigation", "cbrn", "maintenance"}
-        if v not in valid:
-            raise ValueError(f"Mission mode must be one of {valid}, got {v}")
-        return v
+    _validate_mission_mode = field_validator('mission_mode')(
+        _make_enum_validator("mission_mode", frozenset({"patrol", "investigation", "cbrn", "maintenance"}))
+    )
 
-    @field_validator('human_in_loop_threshold')
-    @classmethod
-    def validate_threshold(cls, v: str) -> str:
-        valid = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-        if v not in valid:
-            raise ValueError(f"Threshold must be one of {valid}, got {v}")
-        return v
+    _validate_threshold = field_validator('human_in_loop_threshold')(
+        _make_enum_validator("human_in_loop_threshold", frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"}))
+    )
 
     @field_validator('severity_thresholds', mode='before')
     @classmethod
@@ -247,7 +245,7 @@ class RAGConfig(BaseModel):
 class MQTTConfig(BaseModel):
     """MQTT broker configuration."""
     host: str = Field(default="localhost")
-    port: int = Field(default=1883, gt=0, le=65535)
+    port: int = Field(default=MQTT_DEFAULT_PORT, gt=0, le=65535)
     topic_prefix: str = Field(default="tricorder")
     keepalive_s: int = Field(default=60, gt=0)
     enabled: bool = Field(default=True)
@@ -409,13 +407,9 @@ class LoggingConfig(BaseModel):
     backup_count: int = Field(default=5, ge=0, le=20)
     json_format: bool = Field(default=False, description="Emit structured JSON logs (production)")
 
-    @field_validator('level')
-    @classmethod
-    def validate_level(cls, v: str) -> str:
-        valid = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-        if v not in valid:
-            raise ValueError(f"Log level must be one of {valid}, got {v}")
-        return v
+    _validate_level = field_validator('level')(
+        _make_enum_validator("level", frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}))
+    )
 
 
 class FeatureFlagsConfig(BaseModel):
@@ -471,13 +465,9 @@ class TricorderConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    @field_validator('environment')
-    @classmethod
-    def validate_environment(cls, v: str) -> str:
-        valid = {"development", "staging", "production"}
-        if v not in valid:
-            raise ValueError(f"Environment must be one of {valid}, got {v}")
-        return v
+    _validate_environment = field_validator('environment')(
+        _make_enum_validator("environment", frozenset({"development", "staging", "production"}))
+    )
 
 
 def load_config(config_path: Optional[Path] = None) -> TricorderConfig:

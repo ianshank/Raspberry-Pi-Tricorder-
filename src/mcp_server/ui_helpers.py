@@ -13,6 +13,8 @@ DEFAULT_UI_WS_PATH = "/ws/sensors"
 DEFAULT_UI_ANOMALY_WS_PATH = "/ws/anomalies"
 DEFAULT_UI_ANOMALY_ACK_PATH = "/ui/anomalies/ack"
 DEFAULT_UI_AGENT_CHAT_PATH = "/ui/agent/chat"
+DEFAULT_UI_ANOMALY_HISTORY_PATH = "/ui/anomalies/history"
+DEFAULT_UI_AGENT_CHAT_STREAM_PATH = "/ui/agent/chat/stream"
 
 
 def display_label(sensor_id: str) -> str:

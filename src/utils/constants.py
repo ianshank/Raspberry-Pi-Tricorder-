@@ -37,6 +37,7 @@ MQTT_TOPIC_ACK: str = "anomalies/ack"
 MQTT_DEFAULT_QOS: int = 1
 MQTT_DEFAULT_RECONNECT_DELAY_S: float = 5.0
 MQTT_MAX_RECONNECT_DELAY_S: float = 60.0
+MQTT_DEFAULT_PORT: int = 1883
 
 # ---------------------------------------------------------------------------
 # Admin API constants
@@ -81,3 +82,15 @@ INFERENCE_WARN_THRESHOLD_MS: float = 100.0
 # Simulation defaults
 # ---------------------------------------------------------------------------
 SIMULATED_SENSOR_CONFIDENCE: float = 0.92
+
+# ---------------------------------------------------------------------------
+# UART transport defaults (shared by TFmini-S and HLK-LD2410)
+# ---------------------------------------------------------------------------
+DEFAULT_UART_BAUD_RATE: int = 115200
+UART_READ_BUFFER_SIZE: int = 256
+
+# ---------------------------------------------------------------------------
+# LLM / agent defaults (also mirrored in config.py Pydantic defaults)
+# ---------------------------------------------------------------------------
+DEFAULT_LLM_ENDPOINT: str = "http://localhost:11434"
+DEFAULT_LLM_MAX_TOKENS: int = 512

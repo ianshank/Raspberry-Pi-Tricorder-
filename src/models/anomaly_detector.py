@@ -138,19 +138,6 @@ class AnomalyDetector(BaseModel):
             self._record_error(e)
             raise ModelInferenceError(f"Anomaly detection failed: {e}") from e
 
-    def set_baseline(self, baseline_data: np.ndarray) -> None:
-        """Compute baseline MSE from known-normal data."""
-        try:
-            reconstruction = self.adapter.predict(baseline_data)
-            original_flat = baseline_data.reshape(baseline_data.shape[0], -1)
-            recon_flat = reconstruction.reshape(reconstruction.shape[0], -1)
-            if recon_flat.shape[1] < original_flat.shape[1]:
-                original_flat = original_flat[:, :recon_flat.shape[1]]
-            self._baseline_mse = float(np.mean((original_flat - recon_flat) ** 2))
-            logger.info("%s baseline MSE set to %.6f", self.model_id, self._baseline_mse)
-        except Exception as e:
-            logger.error("%s baseline computation failed: %s", self.model_id, e)
-
     def get_anomaly_history(self, limit: int = 100) -> list:
         return self._anomaly_history[-limit:]
 

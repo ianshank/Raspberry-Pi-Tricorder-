@@ -34,7 +34,9 @@ from mcp_server.ui_helpers import (
     build_query_intent_note,
     sanitize_ui_config,
     DEFAULT_UI_AGENT_CHAT_PATH,
+    DEFAULT_UI_AGENT_CHAT_STREAM_PATH,
     DEFAULT_UI_ANOMALY_ACK_PATH,
+    DEFAULT_UI_ANOMALY_HISTORY_PATH,
     DEFAULT_UI_ANOMALY_WS_PATH,
     DEFAULT_UI_WS_PATH,
 )
@@ -64,15 +66,6 @@ class MCPServerError(Exception):
     """Base exception for MCP server errors."""
     pass
 
-
-class ToolExecutionError(MCPServerError):
-    """Raised when a tool call fails during execution."""
-    pass
-
-
-class AuthenticationError(MCPServerError):
-    """Raised when an authentication check fails."""
-    pass
 
 
 
@@ -388,6 +381,11 @@ def _bootstrap_default_tools(registry: ToolRegistry, config: Dict[str, Any]) -> 
     return sensor_manager
 
 
+def _ensure_dict(value: Any) -> Dict[str, Any]:
+    """Return *value* as dict, or empty dict if not a dict type."""
+    return value if isinstance(value, dict) else {}
+
+
 def create_app(
     config: Optional[Dict[str, Any]] = None,
     registry: Optional[ToolRegistry] = None,
@@ -401,9 +399,7 @@ def create_app(
     """
     config = config or {}
     server_config = config.get("mcp_server", config)
-    ui_config = config.get("ui", {})
-    if not isinstance(ui_config, dict):
-        ui_config = {}
+    ui_config = _ensure_dict(config.get("ui", {}))
 
     reg = registry if registry is not None else ToolRegistry()
     sensor_manager: Optional[SensorManager] = None
@@ -413,12 +409,8 @@ def create_app(
     # ---------------------------------------------------------------
     # MQTT publisher (created before FastAPI for lifespan access)
     # ---------------------------------------------------------------
-    feature_flags_cfg = config.get("feature_flags", {})
-    if not isinstance(feature_flags_cfg, dict):
-        feature_flags_cfg = {}
-    mqtt_config = config.get("mqtt", {})
-    if not isinstance(mqtt_config, dict):
-        mqtt_config = {}
+    feature_flags_cfg = _ensure_dict(config.get("feature_flags", {}))
+    mqtt_config = _ensure_dict(config.get("mqtt", {}))
     mqtt_publisher = create_mqtt_publisher(
         mqtt_config=mqtt_config,
         enabled=bool(feature_flags_cfg.get("mqtt_publishing", True)),
@@ -495,10 +487,10 @@ def create_app(
         1,
     )
     anomaly_history_path = str(
-        ui_public_config.get("anomaly_history_path", "/ui/anomalies/history"),
+        ui_public_config.get("anomaly_history_path", DEFAULT_UI_ANOMALY_HISTORY_PATH),
     )
     if not anomaly_history_path.startswith("/"):
-        anomaly_history_path = "/ui/anomalies/history"
+        anomaly_history_path = DEFAULT_UI_ANOMALY_HISTORY_PATH
     anomaly_history_page_size = max(
         int(ui_public_config.get("anomaly_history_page_size", 50)), MIN_ANOMALY_HISTORY_PAGE_SIZE,
     )
@@ -530,9 +522,7 @@ def create_app(
         try:
             from agents.langgraph_agent import TricorderAgent
 
-            agent_config = config.get("agent", {})
-            if not isinstance(agent_config, dict):
-                agent_config = {}
+            agent_config = _ensure_dict(config.get("agent", {}))
 
             def _agent_tool_caller(name: str, args: Dict[str, Any]) -> Any:
                 return reg.call_sync(name, args)
@@ -572,9 +562,7 @@ def create_app(
     # ---------------------------------------------------------------
     # Admin config hot-reload
     # ---------------------------------------------------------------
-    admin_config = config.get("admin", {})
-    if not isinstance(admin_config, dict):
-        admin_config = {}
+    admin_config = _ensure_dict(config.get("admin", {}))
     admin_enabled = bool(admin_config.get("enabled", False))
     if admin_enabled:
         admin_hmac_secret = admin_config.get("hmac_secret")
@@ -856,10 +844,10 @@ def create_app(
     # ---------------------------------------------------------------
     agent_stream_enabled = bool(feature_flags_cfg.get("agent_stream_enabled", False))
     agent_chat_stream_path = str(
-        ui_public_config.get("agent_chat_stream_path", "/ui/agent/chat/stream"),
+        ui_public_config.get("agent_chat_stream_path", DEFAULT_UI_AGENT_CHAT_STREAM_PATH),
     )
     if not agent_chat_stream_path.startswith("/"):
-        agent_chat_stream_path = "/ui/agent/chat/stream"
+        agent_chat_stream_path = DEFAULT_UI_AGENT_CHAT_STREAM_PATH
 
     if agent_stream_enabled and agent_enabled and agent_runner is not None:
         from sse_starlette.sse import EventSourceResponse  # type: ignore[import-untyped,import-not-found]
@@ -1025,63 +1013,61 @@ def create_app(
             "total_pages": total_pages,
         }
 
-    async def stream_sensor_data(websocket: WebSocket) -> None:
+    async def _stream_websocket(
+        websocket: WebSocket,
+        payload_builder: Callable[[], Awaitable[Dict[str, Any]]],
+        mqtt_topic: str,
+        poll_interval_s: float,
+        stream_name: str,
+    ) -> None:
+        """Generic WebSocket streaming handler with MQTT fire-and-forget publishing."""
         if not await _authorize_websocket(websocket):
             return
 
         await websocket.accept()
-        logger.info("Sensor stream client connected")
+        logger.info("%s client connected", stream_name)
         try:
             while True:
-                payload: Dict[str, Any] = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "readings": {},
-                }
-                if reg.has_tool("read_all_sensors"):
-                    try:
-                        payload["readings"] = await reg.call("read_all_sensors", {})
-                    except Exception as e:
-                        logger.warning("Failed to fetch sensor readings for websocket: %s", e)
-                        payload["error"] = "Sensor readings unavailable"
-
+                payload = await payload_builder()
                 await websocket.send_json(payload)
-                # Fire-and-forget MQTT publish for sensor readings
                 nonlocal _mqtt_messages_published
                 try:
-                    if await mqtt_publisher.publish(MQTT_TOPIC_SENSORS, payload):
+                    if await mqtt_publisher.publish(mqtt_topic, payload):
                         _mqtt_messages_published += 1
                 except Exception as mqtt_exc:
-                    logger.debug("MQTT sensor publish failed (non-blocking): %s", mqtt_exc)
-                await asyncio.sleep(ui_poll_interval_s)
+                    logger.debug("MQTT %s publish failed (non-blocking): %s", stream_name, mqtt_exc)
+                await asyncio.sleep(poll_interval_s)
         except WebSocketDisconnect:
-            logger.info("Sensor stream client disconnected")
+            logger.info("%s client disconnected", stream_name)
         except Exception as e:
-            logger.error("Sensor websocket failed: %s", e, exc_info=True)
+            logger.error("%s websocket failed: %s", stream_name, e, exc_info=True)
             await websocket.close(code=1011)
+
+    async def _build_sensor_payload() -> Dict[str, Any]:
+        """Build sensor readings payload for WebSocket streaming."""
+        payload: Dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "readings": {},
+        }
+        if reg.has_tool("read_all_sensors"):
+            try:
+                payload["readings"] = await reg.call("read_all_sensors", {})
+            except Exception as e:
+                logger.warning("Failed to fetch sensor readings for websocket: %s", e)
+                payload["error"] = "Sensor readings unavailable"
+        return payload
+
+    async def stream_sensor_data(websocket: WebSocket) -> None:
+        await _stream_websocket(
+            websocket, _build_sensor_payload, MQTT_TOPIC_SENSORS,
+            ui_poll_interval_s, "Sensor stream",
+        )
 
     async def stream_anomaly_data(websocket: WebSocket) -> None:
-        if not await _authorize_websocket(websocket):
-            return
-
-        await websocket.accept()
-        logger.info("Anomaly stream client connected")
-        try:
-            while True:
-                payload = await _build_anomaly_payload()
-                await websocket.send_json(payload)
-                # Fire-and-forget MQTT publish for anomaly data
-                nonlocal _mqtt_messages_published
-                try:
-                    if await mqtt_publisher.publish(MQTT_TOPIC_ANOMALIES, payload):
-                        _mqtt_messages_published += 1
-                except Exception as mqtt_exc:
-                    logger.debug("MQTT anomaly publish failed (non-blocking): %s", mqtt_exc)
-                await asyncio.sleep(ui_anomaly_poll_interval_s)
-        except WebSocketDisconnect:
-            logger.info("Anomaly stream client disconnected")
-        except Exception as e:
-            logger.error("Anomaly websocket failed: %s", e, exc_info=True)
-            await websocket.close(code=1011)
+        await _stream_websocket(
+            websocket, _build_anomaly_payload, MQTT_TOPIC_ANOMALIES,
+            ui_anomaly_poll_interval_s, "Anomaly stream",
+        )
 
     registered_ws_paths: set[str] = set()
 
