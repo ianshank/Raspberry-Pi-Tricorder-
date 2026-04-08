@@ -5,10 +5,12 @@ All configuration is externalized to YAML files with environment variable overri
 NO hardcoded values in application code.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 from pathlib import Path
+import copy
 import os
 import json
+import threading
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, field_validator, model_validator
 import logging
@@ -135,6 +137,10 @@ class MCPServerConfig(BaseModel):
     auth_enabled: bool = Field(default=False)
     api_key: Optional[str] = None
     max_concurrent_tools: int = Field(default=10, gt=0, le=100)
+    health_detailed_enabled: bool = Field(
+        default=True,
+        description="Enable the /health/detailed endpoint with per-sensor status",
+    )
     operator_map: Dict[str, str] = Field(
         default_factory=dict,
         description="Mapping of API key/token to operator_id for identity derivation",
@@ -352,6 +358,11 @@ class UIConfig(BaseModel):
         min_length=1,
         description="HTTP endpoint path used by UI agent chat panel",
     )
+    agent_chat_stream_path: str = Field(
+        default="/ui/agent/chat/stream",
+        min_length=1,
+        description="SSE endpoint path for streaming agent chat responses",
+    )
     reconnect_initial_ms: int = Field(
         default=1500,
         ge=250,
@@ -374,7 +385,7 @@ class UIConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "anomaly_ack_path", "anomaly_history_path")
+    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "agent_chat_stream_path", "anomaly_ack_path", "anomaly_history_path")
     @classmethod
     def validate_path(cls, v: str) -> str:
         if not v.startswith("/"):
@@ -415,6 +426,29 @@ class FeatureFlagsConfig(BaseModel):
         default=False,
         description="Enable LLM-based report synthesis (requires Ollama or compatible endpoint)",
     )
+    agent_stream_enabled: bool = Field(
+        default=False,
+        description="Enable SSE streaming for agent chat responses",
+    )
+
+
+class AdminConfig(BaseModel):
+    """Admin API configuration for dynamic config hot-reload."""
+    enabled: bool = Field(default=False, description="Enable admin API endpoints")
+    hmac_secret: Optional[str] = Field(
+        default=None,
+        description="HMAC-SHA256 secret for admin endpoint authentication",
+    )
+    allowed_sections: List[str] = Field(
+        default_factory=lambda: ["ui", "logging", "feature_flags"],
+        description="Config sections that can be hot-reloaded at runtime",
+    )
+    max_payload_bytes: int = Field(
+        default=65536,
+        gt=0,
+        le=1048576,
+        description="Maximum size of admin config update payload in bytes",
+    )
 
 
 class TricorderConfig(BaseModel):
@@ -432,6 +466,7 @@ class TricorderConfig(BaseModel):
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
+    admin: AdminConfig = Field(default_factory=AdminConfig)
 
     model_config = {"extra": "forbid"}
 
@@ -504,3 +539,127 @@ def _apply_env_overrides(config: Dict[str, Any], prefix: str = "TRICORDER") -> D
             logger.debug(f"Applied env override: {env_key}")
 
     return config
+
+
+# ---------------------------------------------------------------------------
+# ConfigManager — thread-safe hot-reload with observer notifications
+# ---------------------------------------------------------------------------
+
+# Type alias for observer callbacks: (section_name, old_value, new_value)
+ConfigObserver = Callable[[str, Any, Any], None]
+
+
+class ConfigManager:
+    """Thread-safe wrapper around TricorderConfig with hot-reload support.
+
+    Observers are notified when specific config sections change, enabling
+    runtime reconfiguration of logging level, feature flags, and UI settings.
+    """
+
+    def __init__(self, config: TricorderConfig) -> None:
+        self._config = config
+        self._lock = threading.Lock()
+        self._observers: List[ConfigObserver] = []
+        logger.info("ConfigManager initialised")
+
+    @property
+    def config(self) -> TricorderConfig:
+        """Return the current config (read-only snapshot)."""
+        with self._lock:
+            return self._config
+
+    def add_observer(self, observer: ConfigObserver) -> None:
+        """Register a callback for config change notifications."""
+        self._observers.append(observer)
+
+    def get_sanitized(self) -> Dict[str, Any]:
+        """Return current config as dict with secrets redacted."""
+        with self._lock:
+            data = self._config.model_dump()
+        # Redact known secret fields
+        if "mcp_server" in data and data["mcp_server"].get("api_key"):
+            data["mcp_server"]["api_key"] = "***"
+        if "admin" in data and data["admin"].get("hmac_secret"):
+            data["admin"]["hmac_secret"] = "***"
+        return data
+
+    def reload(
+        self,
+        partial: Dict[str, Any],
+        allowed_sections: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Apply a partial config update and return a diff of changes.
+
+        Parameters
+        ----------
+        partial:
+            Dict with section keys mapping to partial values, e.g.
+            ``{"logging": {"level": "DEBUG"}}``.
+        allowed_sections:
+            List of section names that may be updated. If ``None``,
+            uses the admin config's ``allowed_sections``.
+
+        Returns
+        -------
+        Dict mapping section names to ``{"old": ..., "new": ...}`` diffs.
+
+        Raises
+        ------
+        ValueError
+            If a section is not in the allowed list or validation fails.
+        """
+        if allowed_sections is None:
+            allowed_sections = self._config.admin.allowed_sections
+
+        # Reject unknown sections
+        for section in partial:
+            if section not in allowed_sections:
+                raise ValueError(
+                    f"Section '{section}' is not allowed for hot-reload. "
+                    f"Allowed: {allowed_sections}"
+                )
+
+        diff: Dict[str, Any] = {}
+        with self._lock:
+            current_dict = self._config.model_dump()
+
+            for section, updates in partial.items():
+                if not isinstance(updates, dict):
+                    raise ValueError(f"Section '{section}' must be a dict")
+
+                old_section = copy.deepcopy(current_dict.get(section, {}))
+                # Merge updates into the section
+                merged = copy.deepcopy(old_section)
+                merged.update(updates)
+                current_dict[section] = merged
+
+                # Track what changed
+                changed_keys = {
+                    k for k in updates
+                    if old_section.get(k) != updates[k]
+                }
+                if changed_keys:
+                    diff[section] = {
+                        "old": {k: old_section.get(k) for k in changed_keys},
+                        "new": {k: merged[k] for k in changed_keys},
+                    }
+
+            # Validate the full config — raises ValidationError on failure
+            new_config = TricorderConfig(**current_dict)
+            self._config = new_config
+
+        # Notify observers outside the lock
+        for section, change in diff.items():
+            for observer in self._observers:
+                try:
+                    observer(section, change["old"], change["new"])
+                except Exception as exc:
+                    logger.warning(
+                        "Config observer failed for section '%s': %s",
+                        section,
+                        exc,
+                    )
+
+        if diff:
+            logger.info("Config hot-reload applied: sections=%s", list(diff.keys()))
+        return diff

@@ -29,6 +29,21 @@ SENSOR_GROUPS: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
+# MQTT topic suffixes (appended to the configured topic_prefix)
+# ---------------------------------------------------------------------------
+MQTT_TOPIC_SENSORS: str = "sensors"
+MQTT_TOPIC_ANOMALIES: str = "anomalies"
+MQTT_TOPIC_AGENT_REPORTS: str = "agent/reports"
+MQTT_TOPIC_ACK: str = "anomalies/ack"
+
+# ---------------------------------------------------------------------------
+# Admin API constants
+# ---------------------------------------------------------------------------
+ADMIN_HMAC_HEADER: str = "X-Tricorder-HMAC"
+ADMIN_MAX_PAYLOAD_BYTES: int = 65536
+ADMIN_DEFAULT_ALLOWED_SECTIONS: tuple = ("ui", "logging", "feature_flags")
+
+# ---------------------------------------------------------------------------
 # Request validation limits
 # ---------------------------------------------------------------------------
 AGENT_CHAT_QUERY_MAX_LENGTH: int = 4000

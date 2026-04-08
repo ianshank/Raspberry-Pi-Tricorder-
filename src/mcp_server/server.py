@@ -24,6 +24,8 @@ from mcp_server.anomaly_helpers import (
     coerce_float,
     extract_anomaly_summary,
 )
+from mcp_server.health import build_basic_health, build_detailed_health
+from mcp_server.mqtt_publisher import create_mqtt_publisher
 from mcp_server.tools.anomaly_tools import register_anomaly_tools
 from mcp_server.tools.sensor_tools import register_sensor_tools
 from mcp_server.ui_helpers import (
@@ -38,6 +40,9 @@ from sensors.base import BaseSensor, SensorReading, SensorStatus
 from sensors.manager import SensorManager
 from utils.constants import (
     AGENT_CHAT_QUERY_MAX_LENGTH,
+    MQTT_TOPIC_SENSORS,
+    MQTT_TOPIC_ANOMALIES,
+    MQTT_TOPIC_ACK,
     SENSOR_GROUPS,
 )
 
@@ -544,6 +549,69 @@ def create_app(
         except Exception as e:
             logger.warning("Agent chat disabled: failed to initialize agent (%s)", e)
 
+    # ---------------------------------------------------------------
+    # MQTT publisher
+    # ---------------------------------------------------------------
+    feature_flags_cfg = config.get("feature_flags", {})
+    if not isinstance(feature_flags_cfg, dict):
+        feature_flags_cfg = {}
+    mqtt_config = config.get("mqtt", {})
+    if not isinstance(mqtt_config, dict):
+        mqtt_config = {}
+    mqtt_publisher = create_mqtt_publisher(
+        mqtt_config=mqtt_config,
+        enabled=bool(feature_flags_cfg.get("mqtt_publishing", True)),
+    )
+    app.state.mqtt_publisher = mqtt_publisher
+    _mqtt_messages_published = 0
+
+    @app.on_event("startup")
+    async def _mqtt_connect() -> None:
+        await mqtt_publisher.connect()
+
+    @app.on_event("shutdown")
+    async def _mqtt_disconnect() -> None:
+        await mqtt_publisher.disconnect()
+
+    # ---------------------------------------------------------------
+    # Health / uptime tracking
+    # ---------------------------------------------------------------
+    import time as _time_mod
+    _server_start_time = _time_mod.monotonic()
+    _project_version = str(config.get("version", "1.0.0"))
+
+    health_detailed_enabled = bool(server_config.get("health_detailed_enabled", True))
+
+    # ---------------------------------------------------------------
+    # Admin config hot-reload
+    # ---------------------------------------------------------------
+    admin_config = config.get("admin", {})
+    if not isinstance(admin_config, dict):
+        admin_config = {}
+    admin_enabled = bool(admin_config.get("enabled", False))
+    if admin_enabled:
+        admin_hmac_secret = admin_config.get("hmac_secret")
+        if admin_hmac_secret:
+            from utils.config import ConfigManager, TricorderConfig as _TC
+            from mcp_server.admin import create_admin_router
+
+            try:
+                config_obj = _TC(**config)
+            except Exception:
+                config_obj = _TC()
+            config_manager = ConfigManager(config_obj)
+            app.state.config_manager = config_manager
+
+            admin_router = create_admin_router(
+                config_manager=config_manager,
+                hmac_secret=str(admin_hmac_secret),
+                max_payload_bytes=int(admin_config.get("max_payload_bytes", 65536)),
+            )
+            app.include_router(admin_router)
+            logger.info("Admin config hot-reload enabled")
+        else:
+            logger.warning("Admin enabled but no hmac_secret configured — admin API disabled")
+
     @app.middleware("http")
     async def auth_middleware(
         request: Request,
@@ -596,11 +664,24 @@ def create_app(
 
     @app.get("/health")
     async def health() -> Dict[str, Any]:
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tools_registered": reg.tool_count,
-        }
+        return build_basic_health(tools_registered=reg.tool_count)
+
+    @app.get("/health/detailed")
+    async def health_detailed() -> Dict[str, Any]:
+        if not health_detailed_enabled:
+            raise HTTPException(status_code=404, detail="Detailed health endpoint is disabled")
+        sm = getattr(app.state, "sensor_manager", None)
+        sensor_health: Dict[str, Dict[str, Any]] = {}
+        if sm is not None and hasattr(sm, "get_health_summary"):
+            sensor_health = sm.get_health_summary()
+        return build_detailed_health(
+            version=_project_version,
+            start_time=_server_start_time,
+            tools_registered=reg.tool_count,
+            sensor_health=sensor_health,
+            mqtt_connected=mqtt_publisher.is_connected(),
+            mqtt_messages_published=_mqtt_messages_published,
+        )
 
     if ui_enabled and ui_static_available:
         @app.get("/", include_in_schema=False)
@@ -783,6 +864,87 @@ def create_app(
             },
         }
 
+    # ---------------------------------------------------------------
+    # SSE streaming agent chat
+    # ---------------------------------------------------------------
+    agent_stream_enabled = bool(feature_flags_cfg.get("agent_stream_enabled", False))
+    agent_chat_stream_path = str(
+        ui_public_config.get("agent_chat_stream_path", "/ui/agent/chat/stream"),
+    )
+    if not agent_chat_stream_path.startswith("/"):
+        agent_chat_stream_path = "/ui/agent/chat/stream"
+
+    if agent_stream_enabled and agent_enabled and agent_runner is not None:
+        from sse_starlette.sse import EventSourceResponse  # type: ignore[import-untyped]
+
+        @app.get(agent_chat_stream_path)
+        async def ui_agent_chat_stream(
+            query: str = "",
+            include_sensor_context: bool = True,
+            request: Request = None,  # type: ignore[assignment]
+        ) -> EventSourceResponse:
+            """SSE streaming endpoint for agent chat — yields token-by-token."""
+            if not query.strip():
+                raise HTTPException(status_code=400, detail="query parameter required")
+            if len(query) > AGENT_CHAT_QUERY_MAX_LENGTH:
+                raise HTTPException(status_code=400, detail="Query too long")
+
+            sensor_snapshot: Dict[str, Any] = {}
+            affected_sensors: List[str] = []
+            if include_sensor_context and reg.has_tool("read_all_sensors"):
+                try:
+                    snapshot = await reg.call("read_all_sensors", {})
+                    if isinstance(snapshot, dict):
+                        sensor_snapshot = snapshot
+                        affected_sensors = [str(s) for s in snapshot.keys()]
+                except Exception:
+                    pass
+
+            anomaly_payload = await _build_anomaly_payload()
+            anomaly_score = coerce_float(anomaly_payload.get("anomaly_score")) or 0.0
+
+            event = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "user_query": query,
+                "anomaly_score": anomaly_score,
+                "affected_sensors": affected_sensors[:8],
+                "context": {
+                    "sensor_snapshot": sensor_snapshot,
+                    "anomaly": anomaly_payload,
+                },
+            }
+
+            async def _event_generator():
+                try:
+                    if hasattr(agent_runner, "run_streaming"):
+                        async for sse_event in agent_runner.run_streaming(event):
+                            import json as _json
+                            yield {
+                                "event": sse_event.get("event", "message"),
+                                "data": _json.dumps(sse_event.get("data", {})),
+                            }
+                    else:
+                        # Fallback: run synchronously and emit a single complete event
+                        import json as _json
+                        result = agent_runner.run(event)
+                        report = str((result or {}).get("report") or "No report generated.")
+                        yield {
+                            "event": "complete",
+                            "data": _json.dumps({
+                                "report": report,
+                                "severity": str((result or {}).get("severity") or "UNKNOWN"),
+                            }),
+                        }
+                except Exception as exc:
+                    import json as _json
+                    logger.error("SSE agent stream error: %s", exc, exc_info=True)
+                    yield {
+                        "event": "error",
+                        "data": _json.dumps({"message": "Agent stream failed"}),
+                    }
+
+            return EventSourceResponse(_event_generator())
+
     @app.get(anomaly_ack_path)
     async def ui_anomaly_ack_info() -> Dict[str, Any]:
         """Describe the anomaly acknowledgment endpoint."""
@@ -824,6 +986,14 @@ def create_app(
             "Anomaly %s acknowledged by %s (source=%s)",
             anomaly_id, acknowledged_by, operator_source,
         )
+
+        # Fire-and-forget MQTT publish for ACK events
+        nonlocal _mqtt_messages_published
+        try:
+            if await mqtt_publisher.publish(MQTT_TOPIC_ACK, record):
+                _mqtt_messages_published += 1
+        except Exception:
+            pass  # MQTT errors must never break the ACK endpoint
 
         return {
             "ok": True,
@@ -887,6 +1057,13 @@ def create_app(
                         payload["error"] = "Sensor readings unavailable"
 
                 await websocket.send_json(payload)
+                # Fire-and-forget MQTT publish for sensor readings
+                nonlocal _mqtt_messages_published
+                try:
+                    if await mqtt_publisher.publish(MQTT_TOPIC_SENSORS, payload):
+                        _mqtt_messages_published += 1
+                except Exception:
+                    pass  # MQTT errors must never break the WS stream
                 await asyncio.sleep(ui_poll_interval_s)
         except WebSocketDisconnect:
             logger.info("Sensor stream client disconnected")
@@ -904,6 +1081,13 @@ def create_app(
             while True:
                 payload = await _build_anomaly_payload()
                 await websocket.send_json(payload)
+                # Fire-and-forget MQTT publish for anomaly data
+                nonlocal _mqtt_messages_published
+                try:
+                    if await mqtt_publisher.publish(MQTT_TOPIC_ANOMALIES, payload):
+                        _mqtt_messages_published += 1
+                except Exception:
+                    pass  # MQTT errors must never break the WS stream
                 await asyncio.sleep(ui_anomaly_poll_interval_s)
         except WebSocketDisconnect:
             logger.info("Anomaly stream client disconnected")

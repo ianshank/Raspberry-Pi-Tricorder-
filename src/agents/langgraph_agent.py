@@ -510,6 +510,99 @@ class TricorderAgent:
         merge_state(state, self.synthesize_report_node(state))
         return dict(state)
 
+    async def run_streaming(
+        self, anomaly_event: Dict[str, Any],
+    ) -> Any:  # AsyncIterator[Dict[str, Any]]
+        """Run the agent and yield SSE-compatible event dicts.
+
+        Yields dicts with ``event`` and ``data`` keys suitable for
+        Server-Sent Events streaming.  Node transitions are emitted
+        as ``node_enter`` events, LLM tokens as ``token`` events,
+        and the final report as a ``complete`` event.
+        """
+
+        initial_state: AgentState = {
+            "messages": [],
+            "anomaly_event": anomaly_event,
+            "evidence": [],
+            "planned_tools": [],
+            "planned_steps": [],
+            "tool_results": [],
+            "report": None,
+            "severity": None,
+            "needs_human_approval": False,
+            "iteration_count": 0,
+        }
+
+        state = initial_state
+
+        def merge_state(state: AgentState, updates: Dict[str, Any]) -> None:
+            mutable = cast(Dict[str, Any], state)
+            for key, value in updates.items():
+                if key in ("messages", "evidence", "tool_results") and isinstance(value, list):
+                    existing = mutable.get(key, [])
+                    if not isinstance(existing, list):
+                        existing = []
+                    mutable[key] = existing + value
+                else:
+                    mutable[key] = value
+
+        # 1. Sensor monitor
+        yield {"event": "node_enter", "data": {"node": "sensor_monitor"}}
+        merge_state(state, self.sensor_monitor_node(state))
+
+        # 2. Evidence gather
+        yield {"event": "node_enter", "data": {"node": "evidence_gather"}}
+        merge_state(state, self.evidence_gather_node(state))
+
+        # 3. Plan tools
+        yield {"event": "node_enter", "data": {"node": "plan_tools"}}
+        merge_state(state, self.plan_tools_node(state))
+
+        # 4. Execute loop
+        for _ in range(self.max_iterations):
+            yield {"event": "node_enter", "data": {"node": "execute_tools"}}
+            merge_state(state, self.execute_tools_node(state))
+            decision = self._should_continue(state)
+            if decision == "synthesize":
+                break
+            merge_state(state, self.plan_tools_node(state))
+
+        # 5. Synthesize — stream tokens if LLM client supports it
+        yield {"event": "node_enter", "data": {"node": "synthesize_report"}}
+        severity = str(state.get("severity", "LOW") or "LOW")
+        evidence_items = state.get("evidence", [])
+        tool_results = state.get("tool_results", [])
+
+        report: Optional[str] = None
+        if self.llm_client is not None and hasattr(self.llm_client, "generate_stream"):
+            try:
+                prompt = self._build_llm_prompt(severity, evidence_items, tool_results)
+                chunks: List[str] = []
+                async for chunk in self.llm_client.generate_stream(
+                    prompt, self.temperature, self.max_tokens,
+                ):
+                    chunks.append(chunk)
+                    yield {"event": "token", "data": {"text": chunk}}
+                report = "".join(chunks).strip() or None
+            except Exception as e:
+                logger.warning("LLM streaming failed, falling back to template: %s", e)
+
+        if report is None and self.llm_client is not None:
+            report = self._try_llm_synthesis(severity, evidence_items, tool_results)
+
+        if report is None:
+            report = self._build_template_report(severity, tool_results)
+
+        yield {
+            "event": "complete",
+            "data": {
+                "report": report,
+                "severity": severity,
+                "needs_human_approval": bool(state.get("needs_human_approval", False)),
+            },
+        }
+
 
 def main() -> None:
     """Entry point for running agent standalone."""
