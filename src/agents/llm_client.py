@@ -7,9 +7,12 @@ deterministic testing without mocking frameworks.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, AsyncIterator, Optional, Protocol, runtime_checkable
+
+from utils.constants import DEFAULT_LLM_ENDPOINT, DEFAULT_LLM_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +45,7 @@ class LLMClient(Protocol):
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> str:
         """Generate text from an LLM. Returns the generated text."""
         ...
@@ -60,7 +63,7 @@ class OllamaClient:
 
     def __init__(
         self,
-        endpoint: str = "http://localhost:11434",
+        endpoint: str = DEFAULT_LLM_ENDPOINT,
         model: str = "qwen2.5:3b",
         timeout_s: float = 30.0,
     ) -> None:
@@ -73,7 +76,7 @@ class OllamaClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> str:
         import httpx
 
@@ -110,6 +113,61 @@ class OllamaClient:
         logger.debug("LLM generate response: %d chars in %.1fs", len(text), elapsed)
         return text
 
+    async def generate_stream(
+        self,
+        prompt: str,
+        temperature: float = 0.1,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
+    ) -> AsyncIterator[str]:
+        """Stream tokens from Ollama using ``"stream": True``.
+
+        Yields text chunks as they arrive from the NDJSON stream.
+        """
+        import httpx
+
+        url = f"{self.endpoint}/api/generate"
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+
+        logger.debug("LLM stream request: model=%s, prompt_len=%d", self.model, len(prompt))
+        start = time.monotonic()
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                async with client.stream("POST", url, json=payload) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                            text = chunk.get("response", "")
+                            if text:
+                                yield text
+                            if chunk.get("done", False):
+                                break
+                        except json.JSONDecodeError:
+                            logger.debug("LLM stream: skipping malformed JSON line")
+                            continue
+        except httpx.TimeoutException as exc:
+            logger.warning("LLM stream timed out after %.1fs", self.timeout_s)
+            raise LLMTimeoutError(
+                f"Ollama stream timed out after {self.timeout_s}s"
+            ) from exc
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            logger.warning("LLM stream connection error: %s", exc)
+            raise LLMConnectionError(str(exc)) from exc
+
+        elapsed = time.monotonic() - start
+        logger.debug("LLM stream completed in %.1fs", elapsed)
+
 
 # ---------------------------------------------------------------------------
 # Mock for testing
@@ -127,8 +185,20 @@ class MockLLMClient:
         self,
         prompt: str,
         temperature: float = 0.1,
-        max_tokens: int = 512,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
     ) -> str:
         self.last_prompt = prompt
         self.call_count += 1
         return self._response
+
+    async def generate_stream(
+        self,
+        prompt: str,
+        temperature: float = 0.1,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
+    ) -> AsyncIterator[str]:
+        """Yield response word-by-word for testing."""
+        self.last_prompt = prompt
+        self.call_count += 1
+        for word in self._response.split():
+            yield word + " "

@@ -4,7 +4,8 @@ Exposes sensor tools via FastAPI with dynamic tool registry.
 All configuration loaded from TricorderConfig — no hardcoded values.
 """
 
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import asyncio
@@ -12,6 +13,7 @@ import hmac
 import logging
 import math
 import random
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -24,21 +26,37 @@ from mcp_server.anomaly_helpers import (
     coerce_float,
     extract_anomaly_summary,
 )
+from mcp_server.health import build_basic_health, build_detailed_health
+from mcp_server.mqtt_publisher import create_mqtt_publisher
 from mcp_server.tools.anomaly_tools import register_anomaly_tools
 from mcp_server.tools.sensor_tools import register_sensor_tools
 from mcp_server.ui_helpers import (
     build_query_intent_note,
     sanitize_ui_config,
     DEFAULT_UI_AGENT_CHAT_PATH,
+    DEFAULT_UI_AGENT_CHAT_STREAM_PATH,
     DEFAULT_UI_ANOMALY_ACK_PATH,
+    DEFAULT_UI_ANOMALY_HISTORY_PATH,
     DEFAULT_UI_ANOMALY_WS_PATH,
     DEFAULT_UI_WS_PATH,
 )
 from sensors.base import BaseSensor, SensorReading, SensorStatus
 from sensors.manager import SensorManager
 from utils.constants import (
+    ADMIN_MAX_PAYLOAD_BYTES,
     AGENT_CHAT_QUERY_MAX_LENGTH,
+    AUTH_PUBLIC_PATHS,
+    DEFAULT_SEVERITY_THRESHOLDS,
+    MAX_ANOMALY_HISTORY_PAGE_SIZE,
+    MIN_ACK_HISTORY_LIMIT,
+    MIN_ANOMALY_HISTORY_PAGE_SIZE,
+    MIN_ANOMALY_POLL_INTERVAL_MS,
+    MIN_POLL_INTERVAL_MS,
+    MQTT_TOPIC_ACK,
+    MQTT_TOPIC_ANOMALIES,
+    MQTT_TOPIC_SENSORS,
     SENSOR_GROUPS,
+    SIMULATED_SENSOR_CONFIDENCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,17 +67,7 @@ class MCPServerError(Exception):
     pass
 
 
-class ToolExecutionError(MCPServerError):
-    """Raised when a tool call fails during execution."""
-    pass
 
-
-class AuthenticationError(MCPServerError):
-    """Raised when an authentication check fails."""
-    pass
-
-
-AUTH_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json"}
 
 
 class Tool(BaseModel):
@@ -332,7 +340,7 @@ class _SimulatedSensor(BaseSensor):
             sensor_id=self.sensor_id,
             timestamp=datetime.now(timezone.utc),
             value=_build_simulated_sensor_value(self.sensor_id, self._sensors_config),
-            confidence=0.92,
+            confidence=SIMULATED_SENSOR_CONFIDENCE,
             metadata={"simulated": True},
         )
 
@@ -373,6 +381,11 @@ def _bootstrap_default_tools(registry: ToolRegistry, config: Dict[str, Any]) -> 
     return sensor_manager
 
 
+def _ensure_dict(value: Any) -> Dict[str, Any]:
+    """Return *value* as dict, or empty dict if not a dict type."""
+    return value if isinstance(value, dict) else {}
+
+
 def create_app(
     config: Optional[Dict[str, Any]] = None,
     registry: Optional[ToolRegistry] = None,
@@ -386,20 +399,37 @@ def create_app(
     """
     config = config or {}
     server_config = config.get("mcp_server", config)
-    ui_config = config.get("ui", {})
-    if not isinstance(ui_config, dict):
-        ui_config = {}
+    ui_config = _ensure_dict(config.get("ui", {}))
 
     reg = registry if registry is not None else ToolRegistry()
     sensor_manager: Optional[SensorManager] = None
     if registry is None:
         sensor_manager = _bootstrap_default_tools(reg, config)
 
+    # ---------------------------------------------------------------
+    # MQTT publisher (created before FastAPI for lifespan access)
+    # ---------------------------------------------------------------
+    feature_flags_cfg = _ensure_dict(config.get("feature_flags", {}))
+    mqtt_config = _ensure_dict(config.get("mqtt", {}))
+    mqtt_publisher = create_mqtt_publisher(
+        mqtt_config=mqtt_config,
+        enabled=bool(feature_flags_cfg.get("mqtt_publishing", True)),
+    )
+    _mqtt_messages_published = 0
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await mqtt_publisher.connect()
+        yield
+        await mqtt_publisher.disconnect()
+
     app = FastAPI(
         title=config.get("project_name", config.get("title", "Tricorder MCP Server")),
         version=config.get("version", "1.0.0"),
+        lifespan=_lifespan,
     )
     app.state.tool_registry = reg
+    app.state.mqtt_publisher = mqtt_publisher
     if sensor_manager is not None:
         app.state.sensor_manager = sensor_manager
 
@@ -426,66 +456,45 @@ def create_app(
         logger.warning("UI static directory does not exist: %s", ui_static_dir)
 
     ui_public_config = sanitize_ui_config(ui_config, ui_static_available, config)
-    ui_poll_interval_s = max(int(ui_public_config["poll_interval_ms"]), 100) / 1000.0
-    ui_ws_path = str(ui_public_config.get("ws_path", DEFAULT_UI_WS_PATH))
-    if not ui_ws_path.startswith("/"):
-        logger.warning("Invalid ui.ws_path=%s, falling back to %s", ui_ws_path, DEFAULT_UI_WS_PATH)
-        ui_ws_path = DEFAULT_UI_WS_PATH
+    ui_poll_interval_s = max(int(ui_public_config["poll_interval_ms"]), MIN_POLL_INTERVAL_MS) / 1000.0
+
+    def _validated_path(config_key: str, default: str) -> str:
+        """Validate a UI path starts with '/', falling back to *default*."""
+        value = str(ui_public_config.get(config_key, default))
+        if value.startswith("/"):
+            return value
+        logger.warning("Invalid ui.%s=%s, falling back to %s", config_key, value, default)
+        return default
+
+    ui_ws_path = _validated_path("ws_path", DEFAULT_UI_WS_PATH)
 
     ui_anomaly_poll_interval_s = max(
         int(ui_public_config.get("anomaly_poll_interval_ms", 2000)),
-        250,
+        MIN_ANOMALY_POLL_INTERVAL_MS,
     ) / 1000.0
-    ui_anomaly_ws_path = str(
-        ui_public_config.get("anomaly_ws_path", DEFAULT_UI_ANOMALY_WS_PATH),
-    )
-    if not ui_anomaly_ws_path.startswith("/"):
-        logger.warning(
-            "Invalid ui.anomaly_ws_path=%s, falling back to %s",
-            ui_anomaly_ws_path,
-            DEFAULT_UI_ANOMALY_WS_PATH,
-        )
-        ui_anomaly_ws_path = DEFAULT_UI_ANOMALY_WS_PATH
+    ui_anomaly_ws_path = _validated_path("anomaly_ws_path", DEFAULT_UI_ANOMALY_WS_PATH)
 
     agent_enabled = bool(ui_public_config.get("agent_enabled", True))
-    agent_chat_path = str(
-        ui_public_config.get("agent_chat_path", DEFAULT_UI_AGENT_CHAT_PATH),
-    )
-    if not agent_chat_path.startswith("/"):
-        logger.warning(
-            "Invalid ui.agent_chat_path=%s, falling back to %s",
-            agent_chat_path,
-            DEFAULT_UI_AGENT_CHAT_PATH,
-        )
-        agent_chat_path = DEFAULT_UI_AGENT_CHAT_PATH
+    agent_chat_path = _validated_path("agent_chat_path", DEFAULT_UI_AGENT_CHAT_PATH)
 
     anomaly_model_id = str(ui_public_config.get("anomaly_model_id", "anomaly_detector"))
-    anomaly_history_limit = max(int(ui_public_config.get("anomaly_history_limit", 1)), 1)
+    anomaly_history_limit = max(int(ui_public_config.get("anomaly_history_limit", 1)), MIN_ACK_HISTORY_LIMIT)
     anomaly_ack_enabled = bool(ui_public_config.get("anomaly_ack_enabled", True))
-    anomaly_ack_path = str(
-        ui_public_config.get("anomaly_ack_path", DEFAULT_UI_ANOMALY_ACK_PATH),
-    )
-    if not anomaly_ack_path.startswith("/"):
-        logger.warning(
-            "Invalid ui.anomaly_ack_path=%s, falling back to %s",
-            anomaly_ack_path,
-            DEFAULT_UI_ANOMALY_ACK_PATH,
-        )
-        anomaly_ack_path = DEFAULT_UI_ANOMALY_ACK_PATH
+    anomaly_ack_path = _validated_path("anomaly_ack_path", DEFAULT_UI_ANOMALY_ACK_PATH)
 
     anomaly_ack_history_limit = max(
         int(ui_public_config.get("anomaly_ack_history_limit", 500)),
         1,
     )
     anomaly_history_path = str(
-        ui_public_config.get("anomaly_history_path", "/ui/anomalies/history"),
+        ui_public_config.get("anomaly_history_path", DEFAULT_UI_ANOMALY_HISTORY_PATH),
     )
     if not anomaly_history_path.startswith("/"):
-        anomaly_history_path = "/ui/anomalies/history"
+        anomaly_history_path = DEFAULT_UI_ANOMALY_HISTORY_PATH
     anomaly_history_page_size = max(
-        int(ui_public_config.get("anomaly_history_page_size", 50)), 10,
+        int(ui_public_config.get("anomaly_history_page_size", 50)), MIN_ANOMALY_HISTORY_PAGE_SIZE,
     )
-    anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", 0.75))
+    anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"]))
     # Read severity thresholds from agent config for consistent labeling
     _agent_cfg = config.get("agent", {})
     severity_thresholds: Optional[Dict[str, float]] = (
@@ -513,9 +522,7 @@ def create_app(
         try:
             from agents.langgraph_agent import TricorderAgent
 
-            agent_config = config.get("agent", {})
-            if not isinstance(agent_config, dict):
-                agent_config = {}
+            agent_config = _ensure_dict(config.get("agent", {}))
 
             def _agent_tool_caller(name: str, args: Dict[str, Any]) -> Any:
                 return reg.call_sync(name, args)
@@ -543,6 +550,42 @@ def create_app(
             agent_runner.build_graph()
         except Exception as e:
             logger.warning("Agent chat disabled: failed to initialize agent (%s)", e)
+
+    # ---------------------------------------------------------------
+    # Health / uptime tracking
+    # ---------------------------------------------------------------
+    _server_start_time = time.monotonic()
+    _project_version = str(config.get("version", "1.0.0"))
+
+    health_detailed_enabled = bool(server_config.get("health_detailed_enabled", True))
+
+    # ---------------------------------------------------------------
+    # Admin config hot-reload
+    # ---------------------------------------------------------------
+    admin_config = _ensure_dict(config.get("admin", {}))
+    admin_enabled = bool(admin_config.get("enabled", False))
+    if admin_enabled:
+        admin_hmac_secret = admin_config.get("hmac_secret")
+        if admin_hmac_secret:
+            from utils.config import ConfigManager, TricorderConfig as _TC
+            from mcp_server.admin import create_admin_router
+
+            try:
+                config_obj = _TC(**config)
+            except Exception:
+                config_obj = _TC()
+            config_manager = ConfigManager(config_obj)
+            app.state.config_manager = config_manager
+
+            admin_router = create_admin_router(
+                config_manager=config_manager,
+                hmac_secret=str(admin_hmac_secret),
+                max_payload_bytes=int(admin_config.get("max_payload_bytes", ADMIN_MAX_PAYLOAD_BYTES)),
+            )
+            app.include_router(admin_router)
+            logger.info("Admin config hot-reload enabled")
+        else:
+            logger.warning("Admin enabled but no hmac_secret configured — admin API disabled")
 
     @app.middleware("http")
     async def auth_middleware(
@@ -596,11 +639,24 @@ def create_app(
 
     @app.get("/health")
     async def health() -> Dict[str, Any]:
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tools_registered": reg.tool_count,
-        }
+        return build_basic_health(tools_registered=reg.tool_count)
+
+    @app.get("/health/detailed")
+    async def health_detailed() -> Dict[str, Any]:
+        if not health_detailed_enabled:
+            raise HTTPException(status_code=404, detail="Detailed health endpoint is disabled")
+        sm = getattr(app.state, "sensor_manager", None)
+        sensor_health: Dict[str, Dict[str, Any]] = {}
+        if sm is not None and hasattr(sm, "get_health_summary"):
+            sensor_health = sm.get_health_summary()
+        return build_detailed_health(
+            version=_project_version,
+            start_time=_server_start_time,
+            tools_registered=reg.tool_count,
+            sensor_health=sensor_health,
+            mqtt_connected=mqtt_publisher.is_connected(),
+            mqtt_messages_published=_mqtt_messages_published,
+        )
 
     if ui_enabled and ui_static_available:
         @app.get("/", include_in_schema=False)
@@ -783,6 +839,88 @@ def create_app(
             },
         }
 
+    # ---------------------------------------------------------------
+    # SSE streaming agent chat
+    # ---------------------------------------------------------------
+    agent_stream_enabled = bool(feature_flags_cfg.get("agent_stream_enabled", False))
+    agent_chat_stream_path = str(
+        ui_public_config.get("agent_chat_stream_path", DEFAULT_UI_AGENT_CHAT_STREAM_PATH),
+    )
+    if not agent_chat_stream_path.startswith("/"):
+        agent_chat_stream_path = DEFAULT_UI_AGENT_CHAT_STREAM_PATH
+
+    if agent_stream_enabled and agent_enabled and agent_runner is not None:
+        from sse_starlette.sse import EventSourceResponse  # type: ignore[import-untyped,import-not-found]
+
+        @app.get(agent_chat_stream_path)
+        async def ui_agent_chat_stream(
+            query: str = "",
+            include_sensor_context: bool = True,
+            request: Request = None,  # type: ignore[assignment]
+        ) -> EventSourceResponse:
+            """SSE streaming endpoint for agent chat — yields token-by-token."""
+            logger.debug("SSE agent stream: query_len=%d", len(query))
+            if not query.strip():
+                raise HTTPException(status_code=400, detail="query parameter required")
+            if len(query) > AGENT_CHAT_QUERY_MAX_LENGTH:
+                raise HTTPException(status_code=400, detail="Query too long")
+
+            sensor_snapshot: Dict[str, Any] = {}
+            affected_sensors: List[str] = []
+            if include_sensor_context and reg.has_tool("read_all_sensors"):
+                try:
+                    snapshot = await reg.call("read_all_sensors", {})
+                    if isinstance(snapshot, dict):
+                        sensor_snapshot = snapshot
+                        affected_sensors = [str(s) for s in snapshot.keys()]
+                except Exception:
+                    pass
+
+            anomaly_payload = await _build_anomaly_payload()
+            anomaly_score = coerce_float(anomaly_payload.get("anomaly_score")) or 0.0
+
+            event = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "user_query": query,
+                "anomaly_score": anomaly_score,
+                "affected_sensors": affected_sensors[:8],
+                "context": {
+                    "sensor_snapshot": sensor_snapshot,
+                    "anomaly": anomaly_payload,
+                },
+            }
+
+            async def _event_generator() -> AsyncIterator[Dict[str, str]]:
+                try:
+                    if hasattr(agent_runner, "run_streaming"):
+                        async for sse_event in agent_runner.run_streaming(event):
+                            import json as _json
+                            yield {
+                                "event": sse_event.get("event", "message"),
+                                "data": _json.dumps(sse_event.get("data", {})),
+                            }
+                    else:
+                        # Fallback: run synchronously and emit a single complete event
+                        import json as _json
+                        result = agent_runner.run(event)
+                        report = str((result or {}).get("report") or "No report generated.")
+                        yield {
+                            "event": "complete",
+                            "data": _json.dumps({
+                                "report": report,
+                                "severity": str((result or {}).get("severity") or "UNKNOWN"),
+                            }),
+                        }
+                except Exception as exc:
+                    import json as _json
+                    logger.error("SSE agent stream error: %s", exc, exc_info=True)
+                    yield {
+                        "event": "error",
+                        "data": _json.dumps({"message": "Agent stream failed"}),
+                    }
+
+            return EventSourceResponse(_event_generator())
+
     @app.get(anomaly_ack_path)
     async def ui_anomaly_ack_info() -> Dict[str, Any]:
         """Describe the anomaly acknowledgment endpoint."""
@@ -825,6 +963,14 @@ def create_app(
             anomaly_id, acknowledged_by, operator_source,
         )
 
+        # Fire-and-forget MQTT publish for ACK events
+        nonlocal _mqtt_messages_published
+        try:
+            if await mqtt_publisher.publish(MQTT_TOPIC_ACK, record):
+                _mqtt_messages_published += 1
+        except Exception as mqtt_exc:
+            logger.debug("MQTT ACK publish failed (non-blocking): %s", mqtt_exc)
+
         return {
             "ok": True,
             "acknowledgment": record,
@@ -841,7 +987,7 @@ def create_app(
     ) -> Dict[str, Any]:
         """Return paginated anomaly acknowledgment history."""
         effective_page_size = page_size if page_size > 0 else anomaly_history_page_size
-        effective_page_size = max(1, min(effective_page_size, 500))
+        effective_page_size = max(1, min(effective_page_size, MAX_ANOMALY_HISTORY_PAGE_SIZE))
         effective_page = max(1, page)
         offset = (effective_page - 1) * effective_page_size
 
@@ -867,49 +1013,61 @@ def create_app(
             "total_pages": total_pages,
         }
 
-    async def stream_sensor_data(websocket: WebSocket) -> None:
+    async def _stream_websocket(
+        websocket: WebSocket,
+        payload_builder: Callable[[], Awaitable[Dict[str, Any]]],
+        mqtt_topic: str,
+        poll_interval_s: float,
+        stream_name: str,
+    ) -> None:
+        """Generic WebSocket streaming handler with MQTT fire-and-forget publishing."""
         if not await _authorize_websocket(websocket):
             return
 
         await websocket.accept()
-        logger.info("Sensor stream client connected")
+        logger.info("%s client connected", stream_name)
         try:
             while True:
-                payload: Dict[str, Any] = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "readings": {},
-                }
-                if reg.has_tool("read_all_sensors"):
-                    try:
-                        payload["readings"] = await reg.call("read_all_sensors", {})
-                    except Exception as e:
-                        logger.warning("Failed to fetch sensor readings for websocket: %s", e)
-                        payload["error"] = "Sensor readings unavailable"
-
+                payload = await payload_builder()
                 await websocket.send_json(payload)
-                await asyncio.sleep(ui_poll_interval_s)
+                nonlocal _mqtt_messages_published
+                try:
+                    if await mqtt_publisher.publish(mqtt_topic, payload):
+                        _mqtt_messages_published += 1
+                except Exception as mqtt_exc:
+                    logger.debug("MQTT %s publish failed (non-blocking): %s", stream_name, mqtt_exc)
+                await asyncio.sleep(poll_interval_s)
         except WebSocketDisconnect:
-            logger.info("Sensor stream client disconnected")
+            logger.info("%s client disconnected", stream_name)
         except Exception as e:
-            logger.error("Sensor websocket failed: %s", e, exc_info=True)
+            logger.error("%s websocket failed: %s", stream_name, e, exc_info=True)
             await websocket.close(code=1011)
+
+    async def _build_sensor_payload() -> Dict[str, Any]:
+        """Build sensor readings payload for WebSocket streaming."""
+        payload: Dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "readings": {},
+        }
+        if reg.has_tool("read_all_sensors"):
+            try:
+                payload["readings"] = await reg.call("read_all_sensors", {})
+            except Exception as e:
+                logger.warning("Failed to fetch sensor readings for websocket: %s", e)
+                payload["error"] = "Sensor readings unavailable"
+        return payload
+
+    async def stream_sensor_data(websocket: WebSocket) -> None:
+        await _stream_websocket(
+            websocket, _build_sensor_payload, MQTT_TOPIC_SENSORS,
+            ui_poll_interval_s, "Sensor stream",
+        )
 
     async def stream_anomaly_data(websocket: WebSocket) -> None:
-        if not await _authorize_websocket(websocket):
-            return
-
-        await websocket.accept()
-        logger.info("Anomaly stream client connected")
-        try:
-            while True:
-                payload = await _build_anomaly_payload()
-                await websocket.send_json(payload)
-                await asyncio.sleep(ui_anomaly_poll_interval_s)
-        except WebSocketDisconnect:
-            logger.info("Anomaly stream client disconnected")
-        except Exception as e:
-            logger.error("Anomaly websocket failed: %s", e, exc_info=True)
-            await websocket.close(code=1011)
+        await _stream_websocket(
+            websocket, _build_anomaly_payload, MQTT_TOPIC_ANOMALIES,
+            ui_anomaly_poll_interval_s, "Anomaly stream",
+        )
 
     registered_ws_paths: set[str] = set()
 

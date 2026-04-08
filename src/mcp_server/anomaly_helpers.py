@@ -51,11 +51,11 @@ def severity_from_score(
     if score is None:
         return "UNKNOWN"
     t = thresholds if isinstance(thresholds, dict) else DEFAULT_SEVERITY_THRESHOLDS
-    if score >= t.get("critical", 0.9):
+    if score >= t.get("critical", DEFAULT_SEVERITY_THRESHOLDS["critical"]):
         return "CRITICAL"
-    if score >= t.get("high", 0.75):
+    if score >= t.get("high", DEFAULT_SEVERITY_THRESHOLDS["high"]):
         return "HIGH"
-    if score >= t.get("medium", 0.5):
+    if score >= t.get("medium", DEFAULT_SEVERITY_THRESHOLDS["medium"]):
         return "MEDIUM"
     return "LOW"
 

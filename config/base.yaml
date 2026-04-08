@@ -111,6 +111,7 @@ mcp_server:
   transport: "http"
   auth_enabled: false
   max_concurrent_tools: 10
+  health_detailed_enabled: true
   operator_map: {}
 
 agent:
@@ -156,6 +157,7 @@ ui:
   anomaly_history_page_size: 50
   agent_enabled: true
   agent_chat_path: "/ui/agent/chat"
+  agent_chat_stream_path: "/ui/agent/chat/stream"
   reconnect_initial_ms: 1500
   reconnect_max_ms: 10000
   theme: "classic"
@@ -196,3 +198,10 @@ feature_flags:
   agent_chat: true
   mqtt_publishing: true
   llm_enabled: false
+  agent_stream_enabled: false
+
+admin:
+  enabled: false
+  hmac_secret: null
+  allowed_sections: ["ui", "logging", "feature_flags"]
+  max_payload_bytes: 65536

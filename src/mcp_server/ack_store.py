@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+
+from utils.constants import SQLITE_BUSY_TIMEOUT_MS
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -240,7 +242,7 @@ class SqliteAckStore:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         return conn
 
     @contextmanager

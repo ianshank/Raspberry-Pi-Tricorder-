@@ -15,6 +15,8 @@ setup(
         "websockets>=12.0",
         "numpy>=1.26.0",
         "structlog>=24.0.0",
+        "sse-starlette>=2.2.0",
+        "paho-mqtt>=2.0.0",
     ],
     extras_require={
         "dev": [

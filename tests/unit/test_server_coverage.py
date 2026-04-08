@@ -26,8 +26,6 @@ from mcp_server.server import (
     ToolRegistry,
     create_app,
     MCPServerError,
-    ToolExecutionError,
-    AuthenticationError,
     _resolve_static_dir,
 )
 
@@ -335,19 +333,18 @@ class TestAgentChatPaths:
 
 
 class TestServerExceptionClasses:
-    """MCPServerError, ToolExecutionError, AuthenticationError hierarchy."""
+    """MCPServerError hierarchy."""
 
     def test_hierarchy(self):
-        assert issubclass(ToolExecutionError, MCPServerError)
-        assert issubclass(AuthenticationError, MCPServerError)
+        assert issubclass(MCPServerError, Exception)
 
     def test_raise_and_catch(self):
         with pytest.raises(MCPServerError):
-            raise ToolExecutionError("tool failed")
+            raise MCPServerError("server failed")
 
-    def test_auth_error_message(self):
-        err = AuthenticationError("bad token")
-        assert "bad token" in str(err)
+    def test_error_message(self):
+        err = MCPServerError("bad state")
+        assert "bad state" in str(err)
 
 
 class TestDefaultToolBootstrap:

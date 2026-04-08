@@ -11,6 +11,7 @@ from models.base import (
     ModelInferenceError, ModelRegistry, InferenceAdapter,
     validate_model_input,
 )
+from utils.constants import INFERENCE_WARN_THRESHOLD_MS
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +102,10 @@ class AnomalyDetector(BaseModel):
 
             elapsed_ms = (time.monotonic() - start_time) * 1000
             self._record_inference(elapsed_ms)
-            if elapsed_ms > 100:
+            if elapsed_ms > INFERENCE_WARN_THRESHOLD_MS:
                 logger.warning(
-                    "%s inference slow: %.1fms (threshold: 100ms)",
-                    self.model_id, elapsed_ms,
+                    "%s inference slow: %.1fms (threshold: %.0fms)",
+                    self.model_id, elapsed_ms, INFERENCE_WARN_THRESHOLD_MS,
                 )
             self.status = ModelStatus.LOADED
 
@@ -136,19 +137,6 @@ class AnomalyDetector(BaseModel):
             logger.error("%s anomaly detection failed: %s", self.model_id, e)
             self._record_error(e)
             raise ModelInferenceError(f"Anomaly detection failed: {e}") from e
-
-    def set_baseline(self, baseline_data: np.ndarray) -> None:
-        """Compute baseline MSE from known-normal data."""
-        try:
-            reconstruction = self.adapter.predict(baseline_data)
-            original_flat = baseline_data.reshape(baseline_data.shape[0], -1)
-            recon_flat = reconstruction.reshape(reconstruction.shape[0], -1)
-            if recon_flat.shape[1] < original_flat.shape[1]:
-                original_flat = original_flat[:, :recon_flat.shape[1]]
-            self._baseline_mse = float(np.mean((original_flat - recon_flat) ** 2))
-            logger.info("%s baseline MSE set to %.6f", self.model_id, self._baseline_mse)
-        except Exception as e:
-            logger.error("%s baseline computation failed: %s", self.model_id, e)
 
     def get_anomaly_history(self, limit: int = 100) -> list:
         return self._anomaly_history[-limit:]

@@ -285,3 +285,33 @@ class TestSensorManagerCoverage:
         readings = manager.read_all()
         assert "bad_sensor" in readings
         assert readings["bad_sensor"] is None
+
+    def test_get_health_summary_with_sensors(self):
+        """get_health_summary returns per-sensor status, type, and diagnostics."""
+        sensor_a = Mock()
+        sensor_a.get_status.return_value = SensorStatus.READY
+        sensor_a.get_diagnostics.return_value = {"error_count": 0, "total_reads": 42}
+        sensor_a.__class__.__name__ = "BME680"
+
+        sensor_b = Mock()
+        sensor_b.get_status.return_value = SensorStatus.ERROR
+        sensor_b.get_diagnostics.return_value = {"error_count": 3, "total_reads": 10}
+        sensor_b.__class__.__name__ = "ADS1263"
+
+        manager = SensorManager()
+        manager._sensors["bme680"] = sensor_a
+        manager._sensors["ads1263"] = sensor_b
+
+        summary = manager.get_health_summary()
+        assert len(summary) == 2
+        assert summary["bme680"]["status"] == "ready"
+        assert summary["bme680"]["type"] == "BME680"
+        assert summary["bme680"]["error_count"] == 0
+        assert summary["bme680"]["total_reads"] == 42
+        assert summary["ads1263"]["status"] == "error"
+        assert summary["ads1263"]["error_count"] == 3
+
+    def test_get_health_summary_empty(self):
+        """get_health_summary with no sensors returns empty dict."""
+        manager = SensorManager()
+        assert manager.get_health_summary() == {}

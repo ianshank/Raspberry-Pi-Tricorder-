@@ -5,12 +5,20 @@ All configuration is externalized to YAML files with environment variable overri
 NO hardcoded values in application code.
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 from pathlib import Path
+import copy
 import os
 import json
+import threading
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, field_validator, model_validator
+from utils.constants import (
+    DEFAULT_LLM_ENDPOINT,
+    DEFAULT_LLM_MAX_TOKENS,
+    DEFAULT_SEVERITY_THRESHOLDS,
+    MQTT_DEFAULT_PORT,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -51,6 +59,15 @@ LCARS_COLORS = {
     "tamarillo",
     "white",
 }
+
+
+def _make_enum_validator(field_name: str, valid_values: frozenset[str]) -> classmethod:
+    """Factory for string-enum field validators — eliminates repeated boilerplate."""
+    def _validate(cls: Any, v: str) -> str:
+        if v not in valid_values:
+            raise ValueError(f"{field_name} must be one of {sorted(valid_values)}, got {v}")
+        return v
+    return classmethod(_validate)
 
 
 class I2CDeviceConfig(BaseModel):
@@ -118,13 +135,9 @@ class ModelConfig(BaseModel):
     confidence_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     window_size: int = Field(default=256, gt=0, description="Sliding window size for time-series models")
 
-    @field_validator('quantization')
-    @classmethod
-    def validate_quantization(cls, v: str) -> str:
-        valid = {"fp32", "fp16", "int8", "int4"}
-        if v not in valid:
-            raise ValueError(f"Quantization must be one of {valid}, got {v}")
-        return v
+    _validate_quantization = field_validator('quantization')(
+        _make_enum_validator("quantization", frozenset({"fp32", "fp16", "int8", "int4"}))
+    )
 
 
 class MCPServerConfig(BaseModel):
@@ -135,31 +148,31 @@ class MCPServerConfig(BaseModel):
     auth_enabled: bool = Field(default=False)
     api_key: Optional[str] = None
     max_concurrent_tools: int = Field(default=10, gt=0, le=100)
+    health_detailed_enabled: bool = Field(
+        default=True,
+        description="Enable the /health/detailed endpoint with per-sensor status",
+    )
     operator_map: Dict[str, str] = Field(
         default_factory=dict,
         description="Mapping of API key/token to operator_id for identity derivation",
     )
 
-    @field_validator('transport')
-    @classmethod
-    def validate_transport(cls, v: str) -> str:
-        valid = {"http", "stdio"}
-        if v not in valid:
-            raise ValueError(f"Transport must be one of {valid}, got {v}")
-        return v
+    _validate_transport = field_validator('transport')(
+        _make_enum_validator("transport", frozenset({"http", "stdio"}))
+    )
 
 
 class LangGraphAgentConfig(BaseModel):
     """LangGraph agent configuration."""
-    llm_endpoint: str = Field(default="http://localhost:11434")
+    llm_endpoint: str = Field(default=DEFAULT_LLM_ENDPOINT)
     model_name: str = Field(default="qwen2.5:3b")
     temperature: float = Field(default=0.1, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=512, gt=0, le=4096)
+    max_tokens: int = Field(default=DEFAULT_LLM_MAX_TOKENS, gt=0, le=4096)
     checkpoint_db_path: str = Field(default="data/agent_checkpoints.db")
     mission_mode: str = Field(default="patrol")
     human_in_loop_threshold: str = Field(default="HIGH")
     severity_thresholds: Dict[str, float] = Field(
-        default_factory=lambda: {"critical": 0.9, "high": 0.75, "medium": 0.5},
+        default_factory=lambda: DEFAULT_SEVERITY_THRESHOLDS.copy(),
         description="Anomaly score thresholds for severity classification",
     )
     max_tools_per_iteration: int = Field(default=3, gt=0, le=20)
@@ -171,26 +184,18 @@ class LangGraphAgentConfig(BaseModel):
         description="HTTP timeout for LLM calls in seconds",
     )
 
-    @field_validator('mission_mode')
-    @classmethod
-    def validate_mission_mode(cls, v: str) -> str:
-        valid = {"patrol", "investigation", "cbrn", "maintenance"}
-        if v not in valid:
-            raise ValueError(f"Mission mode must be one of {valid}, got {v}")
-        return v
+    _validate_mission_mode = field_validator('mission_mode')(
+        _make_enum_validator("mission_mode", frozenset({"patrol", "investigation", "cbrn", "maintenance"}))
+    )
 
-    @field_validator('human_in_loop_threshold')
-    @classmethod
-    def validate_threshold(cls, v: str) -> str:
-        valid = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-        if v not in valid:
-            raise ValueError(f"Threshold must be one of {valid}, got {v}")
-        return v
+    _validate_threshold = field_validator('human_in_loop_threshold')(
+        _make_enum_validator("human_in_loop_threshold", frozenset({"LOW", "MEDIUM", "HIGH", "CRITICAL"}))
+    )
 
     @field_validator('severity_thresholds', mode='before')
     @classmethod
     def validate_severity_thresholds(cls, v: Any) -> Dict[str, float]:
-        defaults = {"critical": 0.9, "high": 0.75, "medium": 0.5}
+        defaults = DEFAULT_SEVERITY_THRESHOLDS.copy()
         if v is None:
             return defaults.copy()
         if not isinstance(v, dict):
@@ -240,7 +245,7 @@ class RAGConfig(BaseModel):
 class MQTTConfig(BaseModel):
     """MQTT broker configuration."""
     host: str = Field(default="localhost")
-    port: int = Field(default=1883, gt=0, le=65535)
+    port: int = Field(default=MQTT_DEFAULT_PORT, gt=0, le=65535)
     topic_prefix: str = Field(default="tricorder")
     keepalive_s: int = Field(default=60, gt=0)
     enabled: bool = Field(default=True)
@@ -352,6 +357,11 @@ class UIConfig(BaseModel):
         min_length=1,
         description="HTTP endpoint path used by UI agent chat panel",
     )
+    agent_chat_stream_path: str = Field(
+        default="/ui/agent/chat/stream",
+        min_length=1,
+        description="SSE endpoint path for streaming agent chat responses",
+    )
     reconnect_initial_ms: int = Field(
         default=1500,
         ge=250,
@@ -374,7 +384,7 @@ class UIConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "anomaly_ack_path", "anomaly_history_path")
+    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "agent_chat_stream_path", "anomaly_ack_path", "anomaly_history_path")
     @classmethod
     def validate_path(cls, v: str) -> str:
         if not v.startswith("/"):
@@ -397,13 +407,9 @@ class LoggingConfig(BaseModel):
     backup_count: int = Field(default=5, ge=0, le=20)
     json_format: bool = Field(default=False, description="Emit structured JSON logs (production)")
 
-    @field_validator('level')
-    @classmethod
-    def validate_level(cls, v: str) -> str:
-        valid = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-        if v not in valid:
-            raise ValueError(f"Log level must be one of {valid}, got {v}")
-        return v
+    _validate_level = field_validator('level')(
+        _make_enum_validator("level", frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}))
+    )
 
 
 class FeatureFlagsConfig(BaseModel):
@@ -414,6 +420,29 @@ class FeatureFlagsConfig(BaseModel):
     llm_enabled: bool = Field(
         default=False,
         description="Enable LLM-based report synthesis (requires Ollama or compatible endpoint)",
+    )
+    agent_stream_enabled: bool = Field(
+        default=False,
+        description="Enable SSE streaming for agent chat responses",
+    )
+
+
+class AdminConfig(BaseModel):
+    """Admin API configuration for dynamic config hot-reload."""
+    enabled: bool = Field(default=False, description="Enable admin API endpoints")
+    hmac_secret: Optional[str] = Field(
+        default=None,
+        description="HMAC-SHA256 secret for admin endpoint authentication",
+    )
+    allowed_sections: List[str] = Field(
+        default_factory=lambda: ["ui", "logging", "feature_flags"],
+        description="Config sections that can be hot-reloaded at runtime",
+    )
+    max_payload_bytes: int = Field(
+        default=65536,
+        gt=0,
+        le=1048576,
+        description="Maximum size of admin config update payload in bytes",
     )
 
 
@@ -432,16 +461,13 @@ class TricorderConfig(BaseModel):
     ui: UIConfig = Field(default_factory=UIConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
+    admin: AdminConfig = Field(default_factory=AdminConfig)
 
     model_config = {"extra": "forbid"}
 
-    @field_validator('environment')
-    @classmethod
-    def validate_environment(cls, v: str) -> str:
-        valid = {"development", "staging", "production"}
-        if v not in valid:
-            raise ValueError(f"Environment must be one of {valid}, got {v}")
-        return v
+    _validate_environment = field_validator('environment')(
+        _make_enum_validator("environment", frozenset({"development", "staging", "production"}))
+    )
 
 
 def load_config(config_path: Optional[Path] = None) -> TricorderConfig:
@@ -504,3 +530,127 @@ def _apply_env_overrides(config: Dict[str, Any], prefix: str = "TRICORDER") -> D
             logger.debug(f"Applied env override: {env_key}")
 
     return config
+
+
+# ---------------------------------------------------------------------------
+# ConfigManager — thread-safe hot-reload with observer notifications
+# ---------------------------------------------------------------------------
+
+# Type alias for observer callbacks: (section_name, old_value, new_value)
+ConfigObserver = Callable[[str, Any, Any], None]
+
+
+class ConfigManager:
+    """Thread-safe wrapper around TricorderConfig with hot-reload support.
+
+    Observers are notified when specific config sections change, enabling
+    runtime reconfiguration of logging level, feature flags, and UI settings.
+    """
+
+    def __init__(self, config: TricorderConfig) -> None:
+        self._config = config
+        self._lock = threading.Lock()
+        self._observers: List[ConfigObserver] = []
+        logger.info("ConfigManager initialised")
+
+    @property
+    def config(self) -> TricorderConfig:
+        """Return the current config (read-only snapshot)."""
+        with self._lock:
+            return self._config
+
+    def add_observer(self, observer: ConfigObserver) -> None:
+        """Register a callback for config change notifications."""
+        self._observers.append(observer)
+
+    def get_sanitized(self) -> Dict[str, Any]:
+        """Return current config as dict with secrets redacted."""
+        with self._lock:
+            data = self._config.model_dump()
+        # Redact known secret fields
+        if "mcp_server" in data and data["mcp_server"].get("api_key"):
+            data["mcp_server"]["api_key"] = "***"
+        if "admin" in data and data["admin"].get("hmac_secret"):
+            data["admin"]["hmac_secret"] = "***"
+        return data
+
+    def reload(
+        self,
+        partial: Dict[str, Any],
+        allowed_sections: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Apply a partial config update and return a diff of changes.
+
+        Parameters
+        ----------
+        partial:
+            Dict with section keys mapping to partial values, e.g.
+            ``{"logging": {"level": "DEBUG"}}``.
+        allowed_sections:
+            List of section names that may be updated. If ``None``,
+            uses the admin config's ``allowed_sections``.
+
+        Returns
+        -------
+        Dict mapping section names to ``{"old": ..., "new": ...}`` diffs.
+
+        Raises
+        ------
+        ValueError
+            If a section is not in the allowed list or validation fails.
+        """
+        if allowed_sections is None:
+            allowed_sections = self._config.admin.allowed_sections
+
+        # Reject unknown sections
+        for section in partial:
+            if section not in allowed_sections:
+                raise ValueError(
+                    f"Section '{section}' is not allowed for hot-reload. "
+                    f"Allowed: {allowed_sections}"
+                )
+
+        diff: Dict[str, Any] = {}
+        with self._lock:
+            current_dict = self._config.model_dump()
+
+            for section, updates in partial.items():
+                if not isinstance(updates, dict):
+                    raise ValueError(f"Section '{section}' must be a dict")
+
+                old_section = copy.deepcopy(current_dict.get(section, {}))
+                # Merge updates into the section
+                merged = copy.deepcopy(old_section)
+                merged.update(updates)
+                current_dict[section] = merged
+
+                # Track what changed
+                changed_keys = {
+                    k for k in updates
+                    if old_section.get(k) != updates[k]
+                }
+                if changed_keys:
+                    diff[section] = {
+                        "old": {k: old_section.get(k) for k in changed_keys},
+                        "new": {k: merged[k] for k in changed_keys},
+                    }
+
+            # Validate the full config — raises ValidationError on failure
+            new_config = TricorderConfig(**current_dict)
+            self._config = new_config
+
+        # Notify observers outside the lock
+        for section, change in diff.items():
+            for observer in self._observers:
+                try:
+                    observer(section, change["old"], change["new"])
+                except Exception as exc:
+                    logger.warning(
+                        "Config observer failed for section '%s': %s",
+                        section,
+                        exc,
+                    )
+
+        if diff:
+            logger.info("Config hot-reload applied: sections=%s", list(diff.keys()))
+        return diff

@@ -196,6 +196,25 @@ def agent_config():
         "max_tokens": 512,
         "mission_mode": "patrol",
         "human_in_loop_threshold": "HIGH",
+        "max_iterations": 2,
+    }
+
+
+@pytest.fixture
+def mock_tool_caller():
+    """Mock tool caller for agent tests."""
+    def caller(name, args):
+        return {"sensor_id": args.get("sensor_id", "test"), "value": 42.0}
+    return caller
+
+
+@pytest.fixture
+def anomaly_event():
+    """Sample anomaly event for agent tests."""
+    return {
+        "anomaly_score": 0.8,
+        "affected_sensors": ["bme680"],
+        "timestamp": "2026-01-01T00:00:00Z",
     }
 
 
@@ -264,3 +283,35 @@ logging:
     config_file = tmp_path / "test_config.yaml"
     config_file.write_text(config_content)
     return config_file
+
+
+# ========== MQTT CONFIG FIXTURES ==========
+
+@pytest.fixture
+def mqtt_config():
+    """MQTT publisher test configuration."""
+    return {
+        "host": "localhost",
+        "port": 1883,
+        "topic_prefix": "test/tricorder",
+        "keepalive_s": 30,
+        "qos": 1,
+        "enabled": True,
+    }
+
+
+# ========== CONFIG MANAGER FIXTURES ==========
+
+@pytest.fixture
+def config_manager():
+    """ConfigManager with admin enabled for testing."""
+    from utils.config import ConfigManager, TricorderConfig
+
+    config = TricorderConfig(
+        admin={
+            "enabled": True,
+            "hmac_secret": "test-secret",
+            "allowed_sections": ["ui", "logging", "feature_flags"],
+        },
+    )
+    return ConfigManager(config)

@@ -79,6 +79,23 @@ class SensorManager:
             for sensor_id, sensor in self._sensors.items()
         ]
 
+    def get_health_summary(self) -> Dict[str, Dict[str, Any]]:
+        """Per-sensor health summary for the health API.
+
+        Returns a dict keyed by sensor_id with status, type, and
+        error_count extracted from existing diagnostics.
+        """
+        summary: Dict[str, Dict[str, Any]] = {}
+        for sensor_id, sensor in self._sensors.items():
+            diag = sensor.get_diagnostics()
+            summary[sensor_id] = {
+                "status": sensor.get_status().value,
+                "type": type(sensor).__name__,
+                "error_count": diag.get("error_count", 0),
+                "total_reads": diag.get("total_reads", 0),
+            }
+        return summary
+
     @property
     def sensor_count(self) -> int:
         return len(self._sensors)
