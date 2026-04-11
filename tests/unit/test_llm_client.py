@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 import asyncio
+
+import pytest
 
 from agents.llm_client import (
     LLMClient,

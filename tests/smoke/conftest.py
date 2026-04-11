@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-import pytest
 import httpx
+import pytest
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

@@ -131,7 +131,10 @@ class PahoMQTTPublisher:
             self._connected = False
             logger.warning("MQTT on_connect: rc=%s", rc)
 
-    def _on_disconnect(self, client: Any, userdata: Any, flags: Any = None, rc: Any = None, properties: Any = None) -> None:
+    def _on_disconnect(
+        self, client: Any, userdata: Any, flags: Any = None,
+        rc: Any = None, properties: Any = None,
+    ) -> None:
         self._connected = False
         logger.info("MQTT disconnected (rc=%s)", rc)
 

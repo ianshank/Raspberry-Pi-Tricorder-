@@ -5,14 +5,17 @@ All configuration is externalized to YAML files with environment variable overri
 NO hardcoded values in application code.
 """
 
-from typing import Any, Callable, Dict, List, Literal, Optional
-from pathlib import Path
 import copy
-import os
 import json
+import logging
+import os
 import threading
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Literal, Optional
+
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, field_validator, model_validator
+
 from utils.constants import (
     DEFAULT_LLM_ENDPOINT,
     DEFAULT_LLM_MAX_TOKENS,
@@ -20,7 +23,6 @@ from utils.constants import (
     MQTT_DEFAULT_PORT,
 )
 from utils.platform import default_uart_port as _default_uart_port
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -385,7 +387,10 @@ class UIConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "agent_chat_stream_path", "anomaly_ack_path", "anomaly_history_path")
+    @field_validator(
+        "ws_path", "anomaly_ws_path", "agent_chat_path",
+        "agent_chat_stream_path", "anomaly_ack_path", "anomaly_history_path",
+    )
     @classmethod
     def validate_path(cls, v: str) -> str:
         if not v.startswith("/"):

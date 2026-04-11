@@ -1,13 +1,16 @@
 """HLK-LD2410 24GHz mmWave radar sensor driver (UART)."""
 
+import logging
+import struct
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-import struct
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading,
-    SensorInitializationError, SensorCommunicationError, SensorFactory,
+    BaseSensor,
+    SensorCommunicationError,
+    SensorFactory,
+    SensorInitializationError,
+    SensorReading,
 )
 from utils.constants import DEFAULT_UART_BAUD_RATE, UART_READ_BUFFER_SIZE
 from utils.platform import default_uart_port

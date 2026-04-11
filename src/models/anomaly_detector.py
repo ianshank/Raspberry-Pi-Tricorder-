@@ -1,14 +1,19 @@
 """Anomaly detector model (Autoencoder-LSTM) for sensor data monitoring."""
 
+import logging
 import time
 from typing import Any, Dict
-import logging
 
 import numpy as np
 
 from models.base import (
-    BaseModel, ModelResult, ModelStatus, ModelLoadError,
-    ModelInferenceError, ModelRegistry, InferenceAdapter,
+    BaseModel,
+    InferenceAdapter,
+    ModelInferenceError,
+    ModelLoadError,
+    ModelRegistry,
+    ModelResult,
+    ModelStatus,
     validate_model_input,
 )
 from utils.constants import INFERENCE_WARN_THRESHOLD_MS

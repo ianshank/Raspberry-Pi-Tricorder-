@@ -1,14 +1,19 @@
 """Sensor fusion engine (cross-attention transformer) for multi-sensor integration."""
 
+import logging
 import time
 from typing import Any, Dict
-import logging
 
 import numpy as np
 
 from models.base import (
-    BaseModel, ModelResult, ModelStatus, ModelLoadError,
-    ModelInferenceError, ModelRegistry, InferenceAdapter,
+    BaseModel,
+    InferenceAdapter,
+    ModelInferenceError,
+    ModelLoadError,
+    ModelRegistry,
+    ModelResult,
+    ModelStatus,
     validate_model_input,
 )
 
@@ -70,8 +75,12 @@ class FusionEngine(BaseModel):
 
             return ModelResult(
                 output={
-                    "scene_embedding": scene_embedding.tolist() if hasattr(scene_embedding, 'tolist') else scene_embedding,
-                    "embedding_dim": scene_embedding.shape[-1] if hasattr(scene_embedding, 'shape') else len(scene_embedding),
+                    "scene_embedding": (
+                        scene_embedding.tolist() if hasattr(scene_embedding, 'tolist') else scene_embedding
+                    ),
+                    "embedding_dim": (
+                        scene_embedding.shape[-1] if hasattr(scene_embedding, 'shape') else len(scene_embedding)
+                    ),
                     "embedding_norm": round(embedding_norm, 4),
                 },
                 confidence=round(confidence, 4),

@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-
-from utils.constants import SQLITE_BUSY_TIMEOUT_MS
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+
+from utils.constants import SQLITE_BUSY_TIMEOUT_MS
 
 logger = logging.getLogger(__name__)
 

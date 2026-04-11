@@ -67,7 +67,7 @@ markers = [
     "smoke: Container smoke tests",
     "ollama: Requires Ollama LLM",
 ]
-addopts = "--strict-markers"
+addopts = "-v --strict-markers --tb=short"
 
 [tool.ruff]
 target-version = "py311"

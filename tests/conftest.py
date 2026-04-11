@@ -1,9 +1,9 @@
 """Shared test fixtures for Tricorder Neural Platform."""
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, PropertyMock
-from datetime import datetime, timezone
 
 import pytest
 

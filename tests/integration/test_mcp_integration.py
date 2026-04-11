@@ -1,10 +1,9 @@
 """Integration tests for MCP server with sensor manager."""
 
 import pytest
-
 from fastapi.testclient import TestClient
 
-from mcp_server.server import create_app, ToolRegistry
+from mcp_server.server import ToolRegistry, create_app
 from mcp_server.tools.sensor_tools import register_sensor_tools
 from sensors.manager import SensorManager
 

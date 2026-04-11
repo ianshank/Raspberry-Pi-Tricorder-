@@ -1,13 +1,15 @@
 """TFmini-S LiDAR time-of-flight distance sensor driver (UART)."""
 
+import logging
+import struct
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-import struct
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading,
-    SensorCommunicationError, SensorFactory,
+    BaseSensor,
+    SensorCommunicationError,
+    SensorFactory,
+    SensorReading,
 )
 from utils.constants import DEFAULT_UART_BAUD_RATE
 from utils.platform import default_uart_port

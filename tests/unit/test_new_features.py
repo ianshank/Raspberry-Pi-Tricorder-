@@ -7,6 +7,14 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+from agents.langgraph_agent import AgentError, AgentTimeoutError, AgentToolError
+from mcp_server.server import MCPServerError
+from models.anomaly_detector import AnomalyDetector
+from models.base import (
+    ModelInferenceError,
+    validate_model_input,
+)
+from models.fusion_engine import FusionEngine
 from utils.config import (
     FeatureFlagsConfig,
     LoggingConfig,
@@ -14,19 +22,10 @@ from utils.config import (
     load_config,
 )
 from utils.logging_setup import (
-    set_correlation_id,
     correlation_id_var,
+    set_correlation_id,
     setup_logging,
 )
-from models.base import (
-    ModelInferenceError,
-    validate_model_input,
-)
-from models.anomaly_detector import AnomalyDetector
-from models.fusion_engine import FusionEngine
-from agents.langgraph_agent import AgentError, AgentToolError, AgentTimeoutError
-from mcp_server.server import MCPServerError
-
 
 # ========== Structured Logging ==========
 
@@ -238,8 +237,8 @@ class TestConfigurableAnomalyLimit:
         assert DEFAULT_MAX_SENSOR_DATA_ITEMS == 10_000
 
     def test_custom_limit_applied(self):
-        from mcp_server.tools.anomaly_tools import register_anomaly_tools
         from mcp_server.server import ToolRegistry
+        from mcp_server.tools.anomaly_tools import register_anomaly_tools
         from models.base import ModelRegistry
 
         mock_model = Mock()

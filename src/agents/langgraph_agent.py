@@ -4,11 +4,11 @@ Implements a stateful agent with sensor monitoring, evidence gathering,
 tool planning/execution, and report synthesis nodes.
 """
 
-from typing import Any, AsyncIterator, Dict, List, Optional, TypedDict, Annotated, cast
-from datetime import datetime, timezone
-from enum import Enum
 import logging
 import operator
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Annotated, Any, AsyncIterator, Dict, List, Optional, TypedDict, cast
 
 from utils.constants import (
     DEFAULT_LLM_ENDPOINT,
@@ -188,7 +188,7 @@ class TricorderAgent:
     def build_graph(self) -> Any:
         """Build the LangGraph state graph. Requires langgraph package."""
         try:
-            from langgraph.graph import StateGraph, END
+            from langgraph.graph import END, StateGraph
         except ImportError:
             logger.warning("langgraph not installed, using standalone mode")
             return self._build_standalone_graph()

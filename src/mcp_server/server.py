@@ -4,16 +4,16 @@ Exposes sensor tools via FastAPI with dynamic tool registry.
 All configuration loaded from TricorderConfig — no hardcoded values.
 """
 
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import asyncio
 import hmac
 import logging
 import math
 import time
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -30,16 +30,15 @@ from mcp_server.mqtt_publisher import create_mqtt_publisher
 from mcp_server.tools.anomaly_tools import register_anomaly_tools
 from mcp_server.tools.sensor_tools import register_sensor_tools
 from mcp_server.ui_helpers import (
-    build_query_intent_note,
-    sanitize_ui_config,
     DEFAULT_UI_AGENT_CHAT_PATH,
     DEFAULT_UI_AGENT_CHAT_STREAM_PATH,
     DEFAULT_UI_ANOMALY_ACK_PATH,
     DEFAULT_UI_ANOMALY_HISTORY_PATH,
     DEFAULT_UI_ANOMALY_WS_PATH,
     DEFAULT_UI_WS_PATH,
+    build_query_intent_note,
+    sanitize_ui_config,
 )
-from sensors.base import BaseSensor, SensorReading, SensorStatus
 from sensors.manager import SensorManager
 from sensors.simulation import SimulatedSensor as _SimulatedSensor
 from utils.constants import (
@@ -360,7 +359,9 @@ def create_app(
     anomaly_history_page_size = max(
         int(ui_public_config.get("anomaly_history_page_size", 50)), MIN_ANOMALY_HISTORY_PAGE_SIZE,
     )
-    anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"]))
+    anomaly_alert_threshold = float(
+        ui_public_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"])
+    )
     # Read severity thresholds from agent config for consistent labeling
     _agent_cfg = config.get("agent", {})
     severity_thresholds: Optional[Dict[str, float]] = (
@@ -433,8 +434,9 @@ def create_app(
     if admin_enabled:
         admin_hmac_secret = admin_config.get("hmac_secret")
         if admin_hmac_secret:
-            from utils.config import ConfigManager, TricorderConfig as _TC
             from mcp_server.admin import create_admin_router
+            from utils.config import ConfigManager
+            from utils.config import TricorderConfig as _TC
 
             try:
                 config_obj = _TC(**config)
@@ -957,6 +959,7 @@ def create_app(
 def main() -> None:
     """Entry point for running MCP server standalone."""
     import uvicorn
+
     from utils.config import load_config
 
     config = load_config()

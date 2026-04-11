@@ -1,8 +1,8 @@
 """Unit tests for LangGraph agent."""
 
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
-from agents.langgraph_agent import TricorderAgent, Severity, AgentState
+from agents.langgraph_agent import AgentState, Severity, TricorderAgent
 
 
 class TestSeverity:

@@ -10,22 +10,22 @@ Covers:
 - SensorManager: read_all exception → None
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from sensors.ads1263 import ADS1263Sensor
 from sensors.as7265x import AS7265xSensor
+from sensors.base import (
+    SensorCommunicationError,
+    SensorInitializationError,
+    SensorStatus,
+)
 from sensors.hlk_ld2410 import HLKLD2410Sensor
+from sensors.manager import SensorManager
 from sensors.max30102 import MAX30102Sensor
 from sensors.mlx90640 import MLX90640Sensor
 from sensors.tfmini_s import TFMiniSSensor
-from sensors.manager import SensorManager
-from sensors.base import (
-    SensorStatus,
-    SensorCommunicationError,
-    SensorInitializationError,
-)
-
 
 # ========== ADS1263 ==========
 

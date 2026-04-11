@@ -1,16 +1,16 @@
 """Unit tests for MCP sensor and anomaly tools."""
 
-import pytest
-from unittest.mock import Mock
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
+import pytest
 
 from mcp_server.server import ToolRegistry
-from mcp_server.tools.sensor_tools import register_sensor_tools
 from mcp_server.tools.anomaly_tools import register_anomaly_tools
+from mcp_server.tools.sensor_tools import register_sensor_tools
+from models.base import ModelRegistry
 from sensors.base import SensorReading, SensorStatus
 from sensors.manager import SensorManager
-from models.base import ModelRegistry
 
 
 class TestSensorTools:

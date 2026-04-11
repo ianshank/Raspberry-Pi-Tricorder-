@@ -12,12 +12,15 @@ To register a new simulated sensor, add a decorated factory function::
         return {"value": random.uniform(0, 100)}
 """
 
+import logging
 import random
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict
 
 from sensors.base import BaseSensor, SensorReading, SensorStatus
 from utils.constants import SIMULATED_SENSOR_CONFIDENCE
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Simulation registry — each sensor type registers a factory function that
@@ -30,6 +33,7 @@ def register_simulation(sensor_pattern: str) -> Callable:
     """Decorator to register a simulated-value factory for *sensor_pattern*."""
     def decorator(func: Callable[..., Dict[str, Any]]) -> Callable[..., Dict[str, Any]]:
         _SIMULATION_REGISTRY[sensor_pattern] = func
+        logger.debug("Registered simulation factory: %s", sensor_pattern)
         return func
     return decorator
 

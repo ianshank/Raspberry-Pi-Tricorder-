@@ -3,8 +3,8 @@
 from unittest.mock import Mock, patch
 
 from agents.langgraph_agent import (
-    TricorderAgent,
     AgentTimeoutError,
+    TricorderAgent,
 )
 
 

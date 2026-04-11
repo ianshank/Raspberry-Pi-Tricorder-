@@ -11,24 +11,23 @@ Covers:
 - utils/logging_setup.py: _add_correlation_id with no correlation ID
 """
 
-import pytest
 from unittest.mock import Mock
-from pydantic import ValidationError
 
 import numpy as np
+import pytest
+from pydantic import ValidationError
 
-from utils.config import (
-    ModelConfig,
-    LangGraphAgentConfig,
-    UIConfig,
-    _apply_env_overrides,
-)
+from models.anomaly_detector import AnomalyDetector
 from models.base import (
     ModelRegistry,
 )
-from models.anomaly_detector import AnomalyDetector
+from utils.config import (
+    LangGraphAgentConfig,
+    ModelConfig,
+    UIConfig,
+    _apply_env_overrides,
+)
 from utils.logging_setup import _add_correlation_id, correlation_id_var
-
 
 # ========== ModelConfig ==========
 

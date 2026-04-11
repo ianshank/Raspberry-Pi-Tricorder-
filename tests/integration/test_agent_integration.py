@@ -1,7 +1,8 @@
 """Integration tests for agent with tool calling."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from agents.langgraph_agent import TricorderAgent
 

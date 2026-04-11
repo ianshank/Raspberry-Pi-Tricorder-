@@ -5,12 +5,12 @@ All sensor drivers inherit from BaseSensor and implement the abstract methods.
 Drivers are hardware-agnostic and use injected I/O adapters for testing.
 """
 
+import logging
 from abc import ABC
-from typing import Any, Dict, Optional, Protocol, runtime_checkable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-import logging
+from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 

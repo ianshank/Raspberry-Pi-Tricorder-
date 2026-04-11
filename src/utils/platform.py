@@ -5,8 +5,11 @@ defaults (e.g. UART device paths) so that no Pi-specific values are
 hardcoded in driver or config code.
 """
 
+import logging
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # OS detection
@@ -55,10 +58,12 @@ def default_uart_port() -> str:
     On macOS        → ``/dev/tty.usbserial-0001`` (typical FTDI / CH340)
     """
     if is_raspberry_pi():
-        return _UART_DEFAULTS["pi"]
-    if is_linux():
-        return _UART_DEFAULTS["linux"]
-    if is_macos():
-        return _UART_DEFAULTS["mac"]
-    # Fallback for Windows or unknown platforms
-    return _UART_DEFAULTS["linux"]
+        port = _UART_DEFAULTS["pi"]
+    elif is_linux():
+        port = _UART_DEFAULTS["linux"]
+    elif is_macos():
+        port = _UART_DEFAULTS["mac"]
+    else:
+        port = _UART_DEFAULTS["linux"]
+    logger.debug("Platform UART default: %s (sys.platform=%s)", port, sys.platform)
+    return port

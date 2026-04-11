@@ -1,15 +1,20 @@
 """Unit tests for sensor base framework."""
 
-import pytest
-from unittest.mock import Mock
 from datetime import datetime, timezone
+from unittest.mock import Mock
 
 import numpy as np
+import pytest
 
 from sensors.base import (
-    SensorReading, SensorStatus, BaseSensor, SensorFactory,
-    SensorError, SensorInitializationError, SensorCommunicationError,
+    BaseSensor,
     SensorCalibrationError,
+    SensorCommunicationError,
+    SensorError,
+    SensorFactory,
+    SensorInitializationError,
+    SensorReading,
+    SensorStatus,
 )
 
 
@@ -71,7 +76,7 @@ class TestSensorStatus:
 class TestBaseSensorAbstract:
     def test_unimplemented_do_methods_raise(self):
         """BaseSensor can be instantiated but _do_initialize/_do_read raise via template."""
-        from sensors.base import SensorInitializationError, SensorCommunicationError
+        from sensors.base import SensorCommunicationError, SensorInitializationError
         sensor = BaseSensor("test", Mock(), {})
         with pytest.raises(SensorInitializationError):
             sensor.initialize()
