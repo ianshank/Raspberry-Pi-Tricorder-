@@ -1,10 +1,9 @@
 """Unit tests for MCP server."""
 
 import pytest
-
 from fastapi.testclient import TestClient
 
-from mcp_server.server import create_app, ToolRegistry
+from mcp_server.server import ToolRegistry, create_app
 
 
 @pytest.fixture

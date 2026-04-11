@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-
-from utils.constants import SQLITE_BUSY_TIMEOUT_MS
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -23,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 from uuid import uuid4
+
+from utils.constants import DEFAULT_SESSION_TTL_S, SQLITE_BUSY_TIMEOUT_MS
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class SessionStore(Protocol):
 class InMemorySessionStore:
     """Dict-backed session store for unit tests and development."""
 
-    def __init__(self, default_ttl_s: int = 3600) -> None:
+    def __init__(self, default_ttl_s: int = DEFAULT_SESSION_TTL_S) -> None:
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._default_ttl_s = default_ttl_s
         logger.info("Session store initialised: in-memory (ttl=%ds)", default_ttl_s)
@@ -151,7 +151,7 @@ _INDEX_SQL = (
 class SqliteSessionStore:
     """WAL-mode SQLite session store — survives service restarts."""
 
-    def __init__(self, db_path: str, default_ttl_s: int = 3600) -> None:
+    def __init__(self, db_path: str, default_ttl_s: int = DEFAULT_SESSION_TTL_S) -> None:
         self._db_path = db_path
         self._default_ttl_s = default_ttl_s
         self._write_lock = threading.Lock()
@@ -271,7 +271,7 @@ class SqliteSessionStore:
 
 def create_session_store(
     db_path: Optional[str] = None,
-    default_ttl_s: int = 3600,
+    default_ttl_s: int = DEFAULT_SESSION_TTL_S,
 ) -> SessionStore:
     """Create the appropriate session store backend.
 

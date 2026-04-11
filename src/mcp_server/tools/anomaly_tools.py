@@ -1,7 +1,7 @@
 """MCP tools for anomaly detection operations."""
 
-from typing import Any, Dict, List, Optional
 import logging
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 

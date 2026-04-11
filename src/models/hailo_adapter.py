@@ -60,7 +60,7 @@ class HailoAdapter:
         """
         effective_path = self._hef_path or model_path
         try:
-            from hailo_platform import HEF, VDevice, ConfigureParams  # type: ignore[import-untyped]
+            from hailo_platform import HEF, ConfigureParams, VDevice  # type: ignore[import-untyped]
         except ImportError:
             logger.warning(
                 "hailo_platform is not installed; "

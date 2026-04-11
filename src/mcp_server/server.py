@@ -4,17 +4,16 @@ Exposes sensor tools via FastAPI with dynamic tool registry.
 All configuration loaded from TricorderConfig — no hardcoded values.
 """
 
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import asyncio
 import hmac
 import logging
 import math
-import random
 import time
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -31,17 +30,17 @@ from mcp_server.mqtt_publisher import create_mqtt_publisher
 from mcp_server.tools.anomaly_tools import register_anomaly_tools
 from mcp_server.tools.sensor_tools import register_sensor_tools
 from mcp_server.ui_helpers import (
-    build_query_intent_note,
-    sanitize_ui_config,
     DEFAULT_UI_AGENT_CHAT_PATH,
     DEFAULT_UI_AGENT_CHAT_STREAM_PATH,
     DEFAULT_UI_ANOMALY_ACK_PATH,
     DEFAULT_UI_ANOMALY_HISTORY_PATH,
     DEFAULT_UI_ANOMALY_WS_PATH,
     DEFAULT_UI_WS_PATH,
+    build_query_intent_note,
+    sanitize_ui_config,
 )
-from sensors.base import BaseSensor, SensorReading, SensorStatus
 from sensors.manager import SensorManager
+from sensors.simulation import SimulatedSensor as _SimulatedSensor
 from utils.constants import (
     ADMIN_MAX_PAYLOAD_BYTES,
     AGENT_CHAT_QUERY_MAX_LENGTH,
@@ -56,7 +55,6 @@ from utils.constants import (
     MQTT_TOPIC_ANOMALIES,
     MQTT_TOPIC_SENSORS,
     SENSOR_GROUPS,
-    SIMULATED_SENSOR_CONFIDENCE,
 )
 
 logger = logging.getLogger(__name__)
@@ -217,142 +215,9 @@ def _iter_enabled_sensor_ids(sensors_config: Dict[str, Any]) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# Simulation registry — each sensor type registers a factory function that
-# produces realistic-looking fake data for development / test environments.
-# ---------------------------------------------------------------------------
-_SIMULATION_REGISTRY: Dict[str, Callable[..., Dict[str, Any]]] = {}
-
-
-def _register_simulation(sensor_pattern: str) -> Callable:
-    """Decorator to register a simulated-value factory for *sensor_pattern*."""
-    def decorator(func: Callable[..., Dict[str, Any]]) -> Callable[..., Dict[str, Any]]:
-        _SIMULATION_REGISTRY[sensor_pattern] = func
-        return func
-    return decorator
-
-
-@_register_simulation("bme680")
-def _sim_bme680(_sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "temperature_c": round(random.uniform(20.0, 26.0), 2),
-        "humidity_rh": round(random.uniform(35.0, 60.0), 2),
-        "pressure_hpa": round(random.uniform(1005.0, 1022.0), 2),
-        "gas_resistance_ohm": round(random.uniform(12000.0, 42000.0), 2),
-    }
-
-
-@_register_simulation("mlx90640")
-def _sim_mlx90640(_sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    thermal_frame = [round(random.uniform(24.0, 34.0), 2) for _ in range(24)]
-    return {
-        "min_temp_c": min(thermal_frame),
-        "avg_temp_c": round(sum(thermal_frame) / len(thermal_frame), 2),
-        "max_temp_c": max(thermal_frame),
-        "thermal_frame": thermal_frame,
-    }
-
-
-@_register_simulation("as7265x")
-def _sim_as7265x(_sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    wavelengths = (
-        "410nm", "435nm", "460nm", "485nm", "510nm", "535nm",
-        "560nm", "585nm", "610nm", "645nm", "680nm", "705nm",
-    )
-    return {
-        "spectral_channels": {
-            name: round(random.uniform(0.05, 1.0), 3) for name in wavelengths
-        }
-    }
-
-
-@_register_simulation("ads1263")
-def _sim_ads1263(sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    adc_channels = sensors_config.get("adc_channels", {})
-    if isinstance(adc_channels, dict) and adc_channels:
-        channel_values = {
-            str(channel_id): round(random.uniform(0.02, 2.8), 3)
-            for channel_id in adc_channels.keys()
-        }
-    else:
-        channel_values = {
-            "ch0": round(random.uniform(0.02, 2.8), 3),
-            "ch1": round(random.uniform(0.02, 2.8), 3),
-        }
-    return {"channels": channel_values}
-
-
-@_register_simulation("hlk_ld2410")
-def _sim_hlk_ld2410(_sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    moving_distance = random.randint(50, 450)
-    still_distance = random.randint(30, 220)
-    detection_distance = max(moving_distance, still_distance)
-    return {
-        "target_state": random.choice(["moving", "still", "none"]),
-        "moving_target_energy": random.randint(0, 100),
-        "stationary_target_energy": random.randint(0, 100),
-        "moving_target_distance_cm": moving_distance,
-        "stationary_target_distance_cm": still_distance,
-        "detection_distance_cm": detection_distance,
-    }
-
-
-@_register_simulation("tfmini")
-def _sim_tfmini(_sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    valid = random.random() > 0.1
-    return {
-        "distance_cm": random.randint(35, 500) if valid else None,
-        "signal_strength": random.randint(30, 200) if valid else None,
-        "temperature_c": round(random.uniform(25.0, 37.0), 2) if valid else None,
-        "max_range_cm": 1200,
-        "valid": valid,
-    }
-
-
-@_register_simulation("max30102")
-def _sim_max30102(_sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "heart_rate_bpm": round(random.uniform(58.0, 92.0), 1),
-        "spo2_percent": round(random.uniform(95.0, 100.0), 1),
-        "ir_avg": round(random.uniform(32000.0, 76000.0), 2),
-    }
-
-
-def _build_simulated_sensor_value(sensor_id: str, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-    sensor_key = sensor_id.lower()
-    for pattern, factory in _SIMULATION_REGISTRY.items():
-        if pattern in sensor_key:
-            return factory(sensors_config)
-    return {"value": round(random.uniform(0.0, 1.0), 4)}
-
-
-class _SimulatedSensor(BaseSensor):
-    """Development-only simulated sensor used when hardware is unavailable."""
-
-    def __init__(self, sensor_id: str, sensors_config: Dict[str, Any]) -> None:
-        super().__init__(sensor_id=sensor_id, adapter=None, config={"simulated": True})
-        self._sensors_config = sensors_config
-
-    def _do_initialize(self) -> bool:
-        return True
-
-    def _do_read(self) -> SensorReading:
-        return SensorReading(
-            sensor_id=self.sensor_id,
-            timestamp=datetime.now(timezone.utc),
-            value=_build_simulated_sensor_value(self.sensor_id, self._sensors_config),
-            confidence=SIMULATED_SENSOR_CONFIDENCE,
-            metadata={"simulated": True},
-        )
-
-    def calibrate(self, **kwargs: Any) -> bool:
-        self.status = SensorStatus.CALIBRATING
-        self.status = SensorStatus.READY
-        return True
-
-    def get_diagnostics(self) -> Dict[str, Any]:
-        diagnostics = super().get_diagnostics()
-        diagnostics["simulated"] = True
-        return diagnostics
+# Simulation registry and _SimulatedSensor are defined in sensors.simulation
+# and imported above. The leading-underscore aliases maintain backward
+# compatibility for any test code that references these private names.
 
 
 def _bootstrap_default_tools(registry: ToolRegistry, config: Dict[str, Any]) -> SensorManager:
@@ -494,7 +359,9 @@ def create_app(
     anomaly_history_page_size = max(
         int(ui_public_config.get("anomaly_history_page_size", 50)), MIN_ANOMALY_HISTORY_PAGE_SIZE,
     )
-    anomaly_alert_threshold = float(ui_public_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"]))
+    anomaly_alert_threshold = float(
+        ui_public_config.get("anomaly_alert_threshold", DEFAULT_SEVERITY_THRESHOLDS["high"])
+    )
     # Read severity thresholds from agent config for consistent labeling
     _agent_cfg = config.get("agent", {})
     severity_thresholds: Optional[Dict[str, float]] = (
@@ -567,8 +434,9 @@ def create_app(
     if admin_enabled:
         admin_hmac_secret = admin_config.get("hmac_secret")
         if admin_hmac_secret:
-            from utils.config import ConfigManager, TricorderConfig as _TC
             from mcp_server.admin import create_admin_router
+            from utils.config import ConfigManager
+            from utils.config import TricorderConfig as _TC
 
             try:
                 config_obj = _TC(**config)
@@ -1091,6 +959,7 @@ def create_app(
 def main() -> None:
     """Entry point for running MCP server standalone."""
     import uvicorn
+
     from utils.config import load_config
 
     config = load_config()

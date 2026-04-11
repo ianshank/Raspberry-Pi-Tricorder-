@@ -5,21 +5,24 @@ All configuration is externalized to YAML files with environment variable overri
 NO hardcoded values in application code.
 """
 
-from typing import Any, Callable, Dict, List, Literal, Optional
-from pathlib import Path
 import copy
-import os
 import json
+import logging
+import os
 import threading
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Literal, Optional
+
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, field_validator, model_validator
+
 from utils.constants import (
     DEFAULT_LLM_ENDPOINT,
     DEFAULT_LLM_MAX_TOKENS,
     DEFAULT_SEVERITY_THRESHOLDS,
     MQTT_DEFAULT_PORT,
 )
-import logging
+from utils.platform import default_uart_port as _default_uart_port
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +104,7 @@ class SPIDeviceConfig(BaseModel):
 
 class UARTDeviceConfig(BaseModel):
     """Configuration for a UART device."""
-    port: str = Field(default="/dev/ttyAMA0")
+    port: str = Field(default_factory=lambda: _default_uart_port())
     baud_rate: int = Field(default=115200, gt=0)
     timeout_s: float = Field(default=1.0, gt=0)
     enabled: bool = Field(default=True)
@@ -384,7 +387,10 @@ class UIConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    @field_validator("ws_path", "anomaly_ws_path", "agent_chat_path", "agent_chat_stream_path", "anomaly_ack_path", "anomaly_history_path")
+    @field_validator(
+        "ws_path", "anomaly_ws_path", "agent_chat_path",
+        "agent_chat_stream_path", "anomaly_ack_path", "anomaly_history_path",
+    )
     @classmethod
     def validate_path(cls, v: str) -> str:
         if not v.startswith("/"):
@@ -470,9 +476,29 @@ class TricorderConfig(BaseModel):
     )
 
 
+def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """Recursively merge *overlay* into *base*, returning a new dict.
+
+    Scalar values in *overlay* replace those in *base*; dicts are merged
+    recursively so that only the keys present in *overlay* are overwritten.
+    """
+    merged = base.copy()
+    for key, value in overlay.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(config_path: Optional[Path] = None) -> TricorderConfig:
     """
-    Load configuration from YAML file with environment variable overrides.
+    Load configuration from YAML file with optional overlay and env overrides.
+
+    Resolution order (last wins):
+    1. Base YAML (``config_path`` or ``config/base.yaml``)
+    2. Overlay YAML (``TRICORDER_CONFIG_OVERLAY`` env var, e.g. ``config/mac.yaml``)
+    3. Individual ``TRICORDER__*`` environment variable overrides
 
     Args:
         config_path: Path to YAML config file. Defaults to config/base.yaml
@@ -489,6 +515,20 @@ def load_config(config_path: Optional[Path] = None) -> TricorderConfig:
     else:
         with open(config_path, 'r') as f:
             config_dict = yaml.safe_load(f) or {}
+
+    # Apply optional overlay (e.g. config/mac.yaml)
+    overlay_path_str = os.environ.get("TRICORDER_CONFIG_OVERLAY")
+    if overlay_path_str:
+        overlay_path = Path(overlay_path_str)
+        if not overlay_path.is_absolute():
+            overlay_path = Path(__file__).parent.parent.parent / overlay_path
+        if overlay_path.exists():
+            with open(overlay_path, 'r') as f:
+                overlay_dict = yaml.safe_load(f) or {}
+            config_dict = _deep_merge(config_dict, overlay_dict)
+            logger.info("Applied config overlay: %s", overlay_path)
+        else:
+            logger.warning("Config overlay not found: %s", overlay_path)
 
     config_dict = _apply_env_overrides(config_dict, prefix="TRICORDER")
 

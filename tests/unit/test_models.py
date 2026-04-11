@@ -1,14 +1,19 @@
 """Unit tests for neural network model framework."""
 
-import pytest
 from unittest.mock import Mock
-import numpy as np
 
-from models.base import (
-    ModelStatus, ModelResult, ModelRegistry,
-    ModelError, ModelLoadError, ModelInferenceError,
-)
+import numpy as np
+import pytest
+
 from models.anomaly_detector import AnomalyDetector
+from models.base import (
+    ModelError,
+    ModelInferenceError,
+    ModelLoadError,
+    ModelRegistry,
+    ModelResult,
+    ModelStatus,
+)
 from models.fusion_engine import FusionEngine
 
 

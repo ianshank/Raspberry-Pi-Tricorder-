@@ -2,11 +2,11 @@
 
 import pytest
 
-from utils.config import load_config, TricorderConfig
+from agents.langgraph_agent import TricorderAgent
+from mcp_server.server import create_app
 from sensors.base import SensorFactory
 from sensors.manager import SensorManager
-from mcp_server.server import create_app
-from agents.langgraph_agent import TricorderAgent
+from utils.config import TricorderConfig, load_config
 
 
 @pytest.mark.sanity

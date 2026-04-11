@@ -1,11 +1,13 @@
 """MLX90640 32x24 thermal camera sensor driver."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorFactory,
+    BaseSensor,
+    SensorFactory,
+    SensorReading,
 )
 
 logger = logging.getLogger(__name__)

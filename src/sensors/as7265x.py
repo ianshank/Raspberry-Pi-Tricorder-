@@ -1,12 +1,14 @@
 """AS7265x 18-channel spectral sensor driver."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading,
-    SensorInitializationError, SensorFactory,
+    BaseSensor,
+    SensorFactory,
+    SensorInitializationError,
+    SensorReading,
 )
 
 logger = logging.getLogger(__name__)

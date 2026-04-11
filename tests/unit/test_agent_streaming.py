@@ -5,7 +5,6 @@ import pytest
 from agents.langgraph_agent import TricorderAgent
 from agents.llm_client import MockLLMClient
 
-
 # Fixtures: agent_config, mock_tool_caller, anomaly_event from conftest.py
 
 

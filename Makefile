@@ -52,7 +52,7 @@ lint:
 	ruff check src/ tests/
 
 typecheck-touched:
-	mypy --config-file mypy.ini src/utils/config.py src/mcp_server/server.py src/mcp_server/admin.py src/mcp_server/health.py src/mcp_server/mqtt_publisher.py src/mcp_server/tools/anomaly_tools.py src/mcp_server/tools/sensor_tools.py src/mcp_server/ack_store.py src/mcp_server/session_store.py src/agents/langgraph_agent.py src/agents/llm_client.py src/models/base.py src/models/anomaly_detector.py src/models/fusion_engine.py src/models/hailo_adapter.py src/sensors/base.py src/sensors/bme680.py src/sensors/manager.py
+	find src -name '*.py' -not -path '*/__pycache__/*' | xargs mypy --config-file mypy.ini
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
@@ -104,4 +104,9 @@ docker-save:
 	docker save -o $(TRICORDER_IMAGE_NAME)-$(TRICORDER_IMAGE_TAG).tar $(FULL_IMAGE_REF)
 
 bundle:
-	@echo "Use PowerShell:  .\\scripts\\bundle-to-drive.ps1 -TargetDrive F"
+	@if [ "$(shell uname -s)" = "Darwin" ] || [ "$(shell uname -s)" = "Linux" ]; then \
+		if [ -z "$(BUNDLE_TARGET)" ]; then echo "Usage: make bundle BUNDLE_TARGET=/path/to/drive"; exit 1; fi; \
+		bash scripts/bundle-to-drive.sh "$(BUNDLE_TARGET)"; \
+	else \
+		echo "Use PowerShell:  .\\scripts\\bundle-to-drive.ps1 -TargetDrive F"; \
+	fi

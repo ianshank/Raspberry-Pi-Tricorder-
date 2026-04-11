@@ -1,7 +1,7 @@
 """Sensor manager for orchestrating all sensor instances."""
 
-from typing import Any, Dict, List, Optional
 import logging
+from typing import Any, Dict, List, Optional
 
 from sensors.base import BaseSensor, SensorFactory, SensorReading, SensorStatus
 

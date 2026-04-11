@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from utils.config import TricorderConfig, load_config, SensorConfig, I2CDeviceConfig
+
+from utils.config import I2CDeviceConfig, SensorConfig, TricorderConfig, load_config
 
 
 @pytest.mark.regression

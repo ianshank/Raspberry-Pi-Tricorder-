@@ -1,12 +1,14 @@
 """MAX30102 SpO2/heart rate sensor driver."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading,
-    SensorInitializationError, SensorFactory,
+    BaseSensor,
+    SensorFactory,
+    SensorInitializationError,
+    SensorReading,
 )
 
 logger = logging.getLogger(__name__)

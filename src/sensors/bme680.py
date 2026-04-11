@@ -1,12 +1,15 @@
 """BME680 environmental sensor driver (temperature, humidity, pressure, VOC)."""
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading, SensorStatus,
-    SensorInitializationError, SensorFactory,
+    BaseSensor,
+    SensorFactory,
+    SensorInitializationError,
+    SensorReading,
+    SensorStatus,
 )
 
 logger = logging.getLogger(__name__)

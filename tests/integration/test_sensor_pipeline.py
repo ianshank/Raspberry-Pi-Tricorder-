@@ -1,7 +1,8 @@
 """Integration tests for sensor pipeline: config -> factory -> manager -> read."""
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
 
 from sensors.manager import SensorManager
 

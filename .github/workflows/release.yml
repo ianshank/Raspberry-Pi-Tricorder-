@@ -17,17 +17,17 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-      - name: Verify setup.py version matches tag
+      - name: Verify pyproject.toml version matches tag
         run: |
-          SETUP_VERSION=$(python -c "
-          import re
-          with open('setup.py') as f:
-              m = re.search(r'version=\"([^\"]+)\"', f.read())
-              print(m.group(1) if m else 'UNKNOWN')
+          PKG_VERSION=$(python -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              data = tomllib.load(f)
+          print(data['project']['version'])
           ")
           TAG_VERSION="${{ steps.version.outputs.version }}"
-          if [ "$SETUP_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::setup.py version ($SETUP_VERSION) does not match tag (v$TAG_VERSION)"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::pyproject.toml version ($PKG_VERSION) does not match tag (v$TAG_VERSION)"
             exit 1
           fi
           echo "Version validated: $TAG_VERSION"

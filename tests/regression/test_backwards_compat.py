@@ -1,18 +1,26 @@
 """Regression tests ensuring backwards compatibility."""
 from __future__ import annotations
 
-import pytest
 from datetime import datetime, timezone
 
+import pytest
+
+from mcp_server.server import Tool, ToolRegistry
+from models.base import ModelRegistry, ModelResult, ModelStatus
 from sensors.base import (
-    SensorReading, SensorStatus, BaseSensor, SensorFactory,
-    SensorError, SensorInitializationError, SensorCommunicationError,
+    BaseSensor,
+    SensorCommunicationError,
+    SensorError,
+    SensorFactory,
+    SensorInitializationError,
+    SensorReading,
+    SensorStatus,
 )
 from utils.config import (
-    TricorderConfig, I2CDeviceConfig, MCPServerConfig,
+    I2CDeviceConfig,
+    MCPServerConfig,
+    TricorderConfig,
 )
-from models.base import ModelResult, ModelStatus, ModelRegistry
-from mcp_server.server import ToolRegistry, Tool
 
 
 @pytest.mark.regression
@@ -157,7 +165,8 @@ class TestAPIResponseSchemaCompat:
     @pytest.fixture
     def api_client(self, tmp_path):
         from fastapi.testclient import TestClient
-        from mcp_server.server import create_app, ToolRegistry
+
+        from mcp_server.server import ToolRegistry, create_app
         registry = ToolRegistry()
         static_dir = TricorderConfig().ui.static_dir
         ack_db_path = str(tmp_path / "compat-ack.db")

@@ -3,10 +3,18 @@
 import pytest
 
 from utils.config import (
-    TricorderConfig, I2CDeviceConfig, SPIDeviceConfig, UARTDeviceConfig,
-    ADCChannelConfig, SensorConfig, ModelConfig, MCPServerConfig,
-    LangGraphAgentConfig, LoggingConfig,
-    load_config, _apply_env_overrides,
+    ADCChannelConfig,
+    I2CDeviceConfig,
+    LangGraphAgentConfig,
+    LoggingConfig,
+    MCPServerConfig,
+    ModelConfig,
+    SensorConfig,
+    SPIDeviceConfig,
+    TricorderConfig,
+    UARTDeviceConfig,
+    _apply_env_overrides,
+    load_config,
 )
 
 
@@ -49,8 +57,9 @@ class TestSPIDeviceConfig:
 
 class TestUARTDeviceConfig:
     def test_default_values(self):
+        from utils.platform import default_uart_port
         config = UARTDeviceConfig()
-        assert config.port == "/dev/ttyAMA0"
+        assert config.port == default_uart_port()
         assert config.baud_rate == 115200
 
     def test_custom_port(self):

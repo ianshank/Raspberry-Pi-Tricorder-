@@ -1,18 +1,17 @@
 """End-to-end tests for the full Tricorder pipeline."""
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
-import numpy as np
-
-from utils.config import load_config
-from sensors.manager import SensorManager
-from models.base import ModelRegistry
-from models.anomaly_detector import AnomalyDetector
-from mcp_server.server import ToolRegistry
-from mcp_server.tools.sensor_tools import register_sensor_tools
-from mcp_server.tools.anomaly_tools import register_anomaly_tools
 from agents.langgraph_agent import TricorderAgent
+from mcp_server.server import ToolRegistry
+from mcp_server.tools.anomaly_tools import register_anomaly_tools
+from mcp_server.tools.sensor_tools import register_sensor_tools
+from models.anomaly_detector import AnomalyDetector
+from models.base import ModelRegistry
+from sensors.manager import SensorManager
+from utils.config import load_config
 
 
 @pytest.mark.e2e
@@ -138,6 +137,7 @@ class TestFullPipeline:
     def test_chat_endpoint_with_sensor_context(self, full_setup, tmp_path):
         """Agent chat returns sensor context in response."""
         from fastapi.testclient import TestClient
+
         from mcp_server.server import create_app
         static_dir = full_setup["config"].ui.static_dir
         db_path = str(tmp_path / "chat-context.db")
@@ -156,6 +156,7 @@ class TestFullPipeline:
     def test_chat_with_operator_identity(self, full_setup, tmp_path):
         """Operator identity propagates to chat response context."""
         from fastapi.testclient import TestClient
+
         from mcp_server.server import create_app
         static_dir = full_setup["config"].ui.static_dir
         db_path = str(tmp_path / "chat-identity.db")
@@ -172,6 +173,7 @@ class TestFullPipeline:
     def test_anomaly_history_endpoint_after_ack(self, full_setup, tmp_path):
         """ACK an anomaly then verify it appears in history."""
         from fastapi.testclient import TestClient
+
         from mcp_server.server import create_app
         static_dir = full_setup["config"].ui.static_dir
         db_path = str(tmp_path / "history-ack.db")

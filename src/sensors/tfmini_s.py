@@ -1,15 +1,18 @@
 """TFmini-S LiDAR time-of-flight distance sensor driver (UART)."""
 
+import logging
+import struct
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-import struct
-import logging
 
 from sensors.base import (
-    BaseSensor, SensorReading,
-    SensorCommunicationError, SensorFactory,
+    BaseSensor,
+    SensorCommunicationError,
+    SensorFactory,
+    SensorReading,
 )
 from utils.constants import DEFAULT_UART_BAUD_RATE
+from utils.platform import default_uart_port
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class TFMiniSSensor(BaseSensor):
 
     def __init__(self, sensor_id: str, adapter: Any, config: Dict[str, Any]):
         super().__init__(sensor_id, adapter, config)
-        self.port = config.get("port", "/dev/ttyUSB0")
+        self.port = config.get("port", default_uart_port())
         self.baud_rate = config.get("baud_rate", DEFAULT_UART_BAUD_RATE)
         self.max_range_cm = config.get("max_range_cm", 1200)
         self.min_range_cm = config.get("min_range_cm", 10)

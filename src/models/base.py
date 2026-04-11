@@ -1,10 +1,10 @@
 """Base neural network model framework with dependency injection."""
 
+import logging
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 from dataclasses import dataclass, field
 from enum import Enum
-import logging
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 import numpy as np
 

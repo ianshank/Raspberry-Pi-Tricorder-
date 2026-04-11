@@ -1,7 +1,7 @@
 """MCP tools for sensor operations."""
 
-from typing import Any, Dict, Optional
 import logging
+from typing import Any, Dict, Optional
 
 from sensors.manager import SensorManager
 

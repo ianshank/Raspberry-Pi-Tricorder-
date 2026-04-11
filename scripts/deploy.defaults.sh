@@ -24,7 +24,7 @@
 : "${TRICORDER_IMAGE_TAG:=latest}"
 : "${TRICORDER_REGISTRY:=ghcr.io}"
 : "${TRICORDER_REGISTRY_OWNER:=}"
-: "${TRICORDER_PLATFORM:=linux/arm64}"
+: "${TRICORDER_PLATFORM:=linux/arm64,linux/amd64}"
 
 # Offline bundle defaults
 : "${BUNDLE_DIR:=tricorder-deploy}"

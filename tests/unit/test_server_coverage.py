@@ -12,23 +12,29 @@ Covers:
 - _extract_anomaly_summary with custom severity thresholds
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch
 
 from mcp_server.anomaly_helpers import (
     coerce_bool as _coerce_bool,
+)
+from mcp_server.anomaly_helpers import (
     coerce_float as _coerce_float,
-    severity_from_score as _severity_from_score,
+)
+from mcp_server.anomaly_helpers import (
     extract_anomaly_summary as _extract_anomaly_summary,
 )
-from mcp_server.server import (
-    ToolRegistry,
-    create_app,
-    MCPServerError,
-    _resolve_static_dir,
+from mcp_server.anomaly_helpers import (
+    severity_from_score as _severity_from_score,
 )
-
+from mcp_server.server import (
+    MCPServerError,
+    ToolRegistry,
+    _resolve_static_dir,
+    create_app,
+)
 
 # ========== Pure-function unit tests ==========
 

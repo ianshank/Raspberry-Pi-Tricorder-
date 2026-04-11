@@ -1,19 +1,22 @@
 """Unit tests for all concrete sensor drivers."""
 
-import pytest
 from unittest.mock import Mock
 
-from sensors.bme680 import BME680Sensor
-from sensors.mlx90640 import MLX90640Sensor
-from sensors.as7265x import AS7265xSensor
-from sensors.max30102 import MAX30102Sensor
-from sensors.ads1263 import ADS1263Sensor
-from sensors.hlk_ld2410 import HLKLD2410Sensor
-from sensors.tfmini_s import TFMiniSSensor
-from sensors.base import (
-    SensorStatus, SensorInitializationError, SensorCommunicationError, SensorFactory,
-)
+import pytest
 
+from sensors.ads1263 import ADS1263Sensor
+from sensors.as7265x import AS7265xSensor
+from sensors.base import (
+    SensorCommunicationError,
+    SensorFactory,
+    SensorInitializationError,
+    SensorStatus,
+)
+from sensors.bme680 import BME680Sensor
+from sensors.hlk_ld2410 import HLKLD2410Sensor
+from sensors.max30102 import MAX30102Sensor
+from sensors.mlx90640 import MLX90640Sensor
+from sensors.tfmini_s import TFMiniSSensor
 
 # ========== BME680 ==========
 
