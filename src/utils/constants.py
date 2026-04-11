@@ -89,6 +89,11 @@ SIMULATED_SENSOR_CONFIDENCE: float = 0.92
 DEFAULT_UART_BAUD_RATE: int = 115200
 UART_READ_BUFFER_SIZE: int = 256
 
+# Platform-specific UART device path defaults (canonical values)
+DEFAULT_UART_PORT_PI: str = "/dev/ttyAMA0"
+DEFAULT_UART_PORT_LINUX: str = "/dev/ttyUSB0"
+DEFAULT_UART_PORT_MAC: str = "/dev/tty.usbserial-0001"
+
 # ---------------------------------------------------------------------------
 # LLM / agent defaults (also mirrored in config.py Pydantic defaults)
 # ---------------------------------------------------------------------------

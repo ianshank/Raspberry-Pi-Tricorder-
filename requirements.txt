@@ -1,9 +1,10 @@
 # Tricorder Neural Platform - Python Dependencies
+# Reference lockfile — install via: pip install -e ".[dev,agent]"
+# See pyproject.toml for canonical dependency definitions.
 
 # Core framework
 pydantic>=2.9.0,<3.0.0
 pyyaml>=6.0.0,<7.0.0
-python-dotenv>=1.0.0,<2.0.0
 
 # Web framework (MCP server)
 fastapi>=0.115.0,<1.0.0

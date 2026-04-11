@@ -1,0 +1,23 @@
+# Production override — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
+#
+# Passes through hardware devices for real sensor access on Raspberry Pi.
+
+services:
+  tricorder:
+    environment:
+      TRICORDER__ENVIRONMENT: production
+    devices:
+      - /dev/i2c-1:/dev/i2c-1
+      - /dev/spidev0.0:/dev/spidev0.0
+      - /dev/ttyAMA0:/dev/ttyAMA0
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    group_add:
+      - dialout
+      - i2c
+      - spi
+      - gpio
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro

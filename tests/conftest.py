@@ -179,12 +179,12 @@ def ads1263_config():
 
 @pytest.fixture
 def hlk_ld2410_config():
-    return {"port": "/dev/ttyAMA0", "baud_rate": 115200}
+    return {"port": "/dev/test-uart0", "baud_rate": 115200}
 
 
 @pytest.fixture
 def tfmini_config():
-    return {"port": "/dev/ttyUSB0", "baud_rate": 115200, "max_range_cm": 1200, "min_range_cm": 10}
+    return {"port": "/dev/test-uart1", "baud_rate": 115200, "max_range_cm": 1200, "min_range_cm": 10}
 
 
 @pytest.fixture

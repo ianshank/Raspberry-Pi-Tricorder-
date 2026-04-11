@@ -49,8 +49,9 @@ class TestSPIDeviceConfig:
 
 class TestUARTDeviceConfig:
     def test_default_values(self):
+        from utils.platform import default_uart_port
         config = UARTDeviceConfig()
-        assert config.port == "/dev/ttyAMA0"
+        assert config.port == default_uart_port()
         assert config.baud_rate == 115200
 
     def test_custom_port(self):

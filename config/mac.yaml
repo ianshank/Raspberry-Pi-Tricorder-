@@ -1,0 +1,25 @@
+# macOS development overrides
+# Layer on top of base.yaml via: TRICORDER_CONFIG_OVERLAY=config/mac.yaml
+#
+# Runs the full MCP server with simulated sensors — no hardware required.
+
+environment: "development"
+
+sensors:
+  uart_devices:
+    hlk_ld2410:
+      port: "/dev/tty.usbserial-0001"
+      enabled: true
+    tfmini_s:
+      port: "/dev/tty.usbserial-0002"
+      enabled: true
+
+logging:
+  level: "DEBUG"
+  json_format: false
+
+feature_flags:
+  mqtt_publishing: false
+
+ui:
+  debug: true

@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import importlib
 import logging
+import sys
 from typing import Any, Dict
 
 import pytest
+
+# Skip entire hardware test directory on non-Linux platforms
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Hardware tests require Linux (Raspberry Pi)",
+)
 
 logger = logging.getLogger(__name__)
 
